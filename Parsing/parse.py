@@ -9,6 +9,8 @@ import imageio
 import os
 from matplotlib.ticker import MaxNLocator, ScalarFormatter
 
+# -------------------------------------------------------------------------------
+
 __version__ = '0.01.00'
 
 # Constants
@@ -177,42 +179,44 @@ def readgdf(gdf_file, procfunc=_proc_print):
     return gdf_head
 
 # Cell 2: Data processing and binning
+# -------------------------------------------------------------------------------
 def process_data():
     OUTPUT_PATH = '/pscratch/sd/j/jcurcio/pcnn/Volume_Data/'
 
-    n_pixels = 128
+    n_pixels = 256
     c = 2.99792458e8  # Speed of light
 
-    data = gdftomemory("PINN_trainingData_02.gdf")
+    data = gdftomemory("PINN_trainingData_03.gdf")
 
-    print(len(data))
 
+    # Determine max height, max width, and max bunch length across all timesteps
     z_max_range = 0
     x_min = float("inf")
     x_max = float("-inf")
     y_min = float("inf")
     y_max = float("-inf")
 
-    z_max_range = 0
-
     B_max_global = float("-inf")
     J_max_global = float("-inf")
 
     for step in range(len(data) - 1):
-        x_data = data[step].get("d").get("x")
-        y_data = data[step].get("d").get("y")
-        z_data = data[step].get("d").get("z")
+        x = np.array(data[step].get("d").get("x"))
+        y = np.array(data[step].get("d").get("y"))
+        z = np.array(data[step].get("d").get("z"))
+        q = np.array(data[step].get("d").get("q"))
 
-        x = np.array(x_data)
-        y = np.array(y_data)
-        z = np.array(z_data)
+        # Create a mask for the real particles. We don't care about the dummy particles
+        mask = q != 0
+        x_real = x[mask]
+        y_real = y[mask]
+        z_real = z[mask]
 
-        x_min = min(x_min, x.min())
-        x_max = max(x_max, x.max())
-        y_min = min(y_min, y.min())
-        y_max = max(y_max, y.max())
+        x_min = min(x_min, x_real.min())
+        x_max = max(x_max, x_real.max())
+        y_min = min(y_min, y_real.min())
+        y_max = max(y_max, y_real.max())
 
-        z_range = z.max() - z.min()
+        z_range = z_real.max() - z_real.min()
 
         if z_range > z_max_range:
             z_max_range = z_range
@@ -228,54 +232,59 @@ def process_data():
     print('ymax: ', y_max)
     print('z_range: ', z_max_range)
 
-    for step in range(len(data) - 1):
-        x_data = data[step].get("d").get("x")
-        y_data = data[step].get("d").get("y")
-        z_data = data[step].get("d").get("z")
 
-        x = np.array(x_data)
-        y = np.array(y_data)
-        z = np.array(z_data)
+    # Begin calculating and binning data
+    for step in range(len(data)):
+        # Retrieve data
+        x = np.array(data[step].get("d").get("x"))
+        y = np.array(data[step].get("d").get("y"))
+        z = np.array(data[step].get("d").get("z"))
+        q = np.array(data[step].get("d").get("q"))
 
-        z_min_current = z.min()
-        z_max_current = z.max()
-
+        mask = q != 0
+        z_real = z[mask]
+        z_min_current = z_real.min()
         zbins = np.linspace(z_min_current, z_min_current + z_max_range, n_pixels + 1)
 
-        binning_result = {}
+        # Retrieve data
         components = {
             "Ex": np.array(data[step].get("d").get("fEx")),
             "Ey": np.array(data[step].get("d").get("fEy")),
             "Ez": np.array(data[step].get("d").get("fEz")),
-            "Bx": np.array(data[step].get("d").get("fBx")),  # Bx represents fBx
+            "Bx": np.array(data[step].get("d").get("fBx")),  # fBx represents magnetic x
             "By": np.array(data[step].get("d").get("fBy")),
             "Bz": np.array(data[step].get("d").get("fBz")),
             "q": np.array(data[step].get("d").get("q")),
         }
+
         velocities = {
             "Bx": np.array(data[step].get("d").get("Bx")),
             "By": np.array(data[step].get("d").get("By")),
             "Bz": np.array(data[step].get("d").get("Bz")),
         }
 
+        binning_result = {}
+
+
+
+        # Binning
         for key, data_comp in components.items():
             if key == 'q':
-                hist, _ = np.histogramdd((x, y, z), bins=[xbins, ybins, zbins], weights=data_comp, density=True)
+                hist, _ = np.histogramdd((x[mask], y[mask], z[mask]), bins=[xbins, ybins, zbins], weights=data_comp[mask], density=True) # apply q != 0 mask to only bin real particles for rho
                 binning_result[key] = hist
             else:
-                hist, _ = np.histogramdd((x, y, z), bins=[xbins, ybins, zbins], weights=data_comp)
+                hist, _ = np.histogramdd((x, y, z), bins=[xbins, ybins, zbins], weights=data_comp) # bin both real and dummy particles for E and B
                 binning_result[key] = hist
 
+        # Save each binned result as a file
         for component in components:
             binned = binning_result[component]
             np.save(OUTPUT_PATH + f'{component}_3D_vol_{n_pixels}_{step}.npy', binned)
 
-        Jx = components["q"] * velocities["Bx"] * c / bin_volume
-        Jy = components["q"] * velocities["By"] * c / bin_volume
-        Jz = components["q"] * velocities["Bz"] * c / bin_volume
-
-        B_max_global = max(B_max_global, components["Bx"].max(), components["By"].max(), components["Bz"].max())
-        J_max_global = max(J_max_global, Jx.max(), Jy.max(), Jz.max())
+        # Calculate J components
+        Jx = components["q"][mask] * velocities["Bx"][mask] * c / bin_volume
+        Jy = components["q"][mask] * velocities["By"][mask] * c / bin_volume
+        Jz = components["q"][mask] * velocities["Bz"][mask] * c / bin_volume
 
         j_components = {
             "Jx": Jx,
@@ -283,9 +292,16 @@ def process_data():
             "Jz": Jz,
         }
 
+        # Bin J
         for j_key, j_data in j_components.items():
-            hist, _ = np.histogramdd((x, y, z), bins=[xbins, ybins, zbins], weights=j_data, density=True)
+            hist, _ = np.histogramdd((x[mask], y[mask], z[mask]), bins=[xbins, ybins, zbins], weights=j_data, density=True)
             np.save(OUTPUT_PATH + f'{j_key}_3D_vol_{n_pixels}_{step}.npy', hist)
+
+
+        # Find B and J max for normalization
+        B_max_global = max(B_max_global, components["Bx"][mask].max(), components["By"][mask].max(), components["Bz"][mask].max())
+        J_max_global = max(J_max_global, Jx.max(), Jy.max(), Jz.max())
+
 
     np.save(OUTPUT_PATH + 'Bxyz_max.npy', B_max_global)
     np.save(OUTPUT_PATH + 'J_max_max_all_128.npy', J_max_global)
@@ -294,7 +310,11 @@ def process_data():
     print("B_max_global:", B_max_global)
     print("J_max_global:", J_max_global)
 
+
+
+
 # Cell 3: Plotting
+# -------------------------------------------------------------------------------
 def plot_variable(variable_name, data_length, xbins, ybins, data):
     OUTPUT_PATH = '/pscratch/sd/j/jcurcio/pcnn/Volume_Data/'
     n_pixels = 128
@@ -308,12 +328,7 @@ def plot_variable(variable_name, data_length, xbins, ybins, data):
         ax = fig.add_subplot(111, projection='3d')
 
         file_path = OUTPUT_PATH + f'{variable_name}_3D_vol_{n_pixels}_{i}.npy'
-
-        if not os.path.exists(file_path):
-            binned_data = np.zeros((n_pixels, n_pixels, n_pixels))
-            print(f"File not found, creating an all-zero placeholder for: {file_path}")
-        else:
-            binned_data = np.load(file_path)
+        binned_data = np.load(file_path)
 
         if np.all(binned_data == 0):
             print(f"File contains only zeros: {file_path}")
@@ -390,7 +405,7 @@ if __name__ == "__main__":
     process_data()
 
     if args.plot:
-        data = gdftomemory("PINN_trainingData_02.gdf")
+        data = gdftomemory("PINN_trainingData_03.gdf")
 
         n_pixels = 128
         global_x_min = -0.000524511592356779

@@ -55,11 +55,12 @@ Bx_predicted = Az1_y - Ay1_z  # Bx = ∂Az/∂y - ∂Ay/∂z
 By_predicted = Ax1_z - Az1_x  # By = ∂Ax/∂z - ∂Az/∂x
 Bz_predicted = Ay1_x - Ax1_y  # Bz = ∂Ay/∂x - ∂Ax/∂y
 
-# Remove values below the precision threshold
-precision_threshold = 0.0001
-Bx_predicted = np.where(np.abs(Bx_predicted) < precision_threshold, 0, Bx_predicted)
-By_predicted = np.where(np.abs(By_predicted) < precision_threshold, 0, By_predicted)
-Bz_predicted = np.where(np.abs(Bz_predicted) < precision_threshold, 0, Bz_predicted)
+# Remove values within the precision range threshold
+precision_threshold_low = -0.8e8
+precision_threshold_high = 0.8e8
+Bx_predicted = np.where((Bx_predicted > precision_threshold_low) & (Bx_predicted < precision_threshold_high), 0, Bx_predicted)
+By_predicted = np.where((By_predicted > precision_threshold_low) & (By_predicted < precision_threshold_high), 0, By_predicted)
+Bz_predicted = np.where((Bz_predicted > precision_threshold_low) & (Bz_predicted < precision_threshold_high), 0, Bz_predicted)
 
 print(Bx_predicted.dtype)
 
@@ -70,123 +71,65 @@ print('Number of zero elements in Bz: ', len(Bz_predicted.flatten()) - np.count_
 # PLOTTING
 # ------------------------------------------------------------------------------------------------------------
 
-# Compute the magnitude of the magnetic field vectors
-B_magnitude_predicted = np.sqrt(Bx_predicted**2 + By_predicted**2 + Bz_predicted**2)
+# 3D PLOTTING
 
-# Create a mask for non-zero magnitudes
-mask_predicted = B_magnitude_predicted > 0
+# Generate coordinate arrays
+n_pixels = 128
+x = np.linspace(0, 1, n_pixels)
+y = np.linspace(0, 1, n_pixels)
+z = np.linspace(0, 1, n_pixels)
 
-# 3D Scatter plot for non-zero values of the magnetic field magnitudes
-def plot_magnetic_field_components(Bx, By, Bz, mask, title):
-    fig = plt.figure(figsize=(15, 13))
-    ax = fig.add_subplot(111, projection='3d')
+# Create meshgrid for coordinates
+X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
 
-    # Create meshgrid for plotting
-    x, y, z = np.meshgrid(np.arange(n_pixels), np.arange(n_pixels), np.arange(n_pixels), indexing='ij')
+# Apply the threshold
+mask = np.abs(Bx_predicted) >= precision_threshold_high
+X_filtered = X[mask]
+Y_filtered = Y[mask]
+Z_filtered = Z[mask]
+Bx_filtered = Bx_predicted[mask]
 
-    # Flatten arrays for plotting
-    x_flattened = x.flatten()
-    y_flattened = y.flatten()
-    z_flattened = z.flatten()
-    Bx_flattened = Bx.flatten()
-    By_flattened = By.flatten()
-    Bz_flattened = Bz.flatten()
+# Get the original min and max values for the colormap
+Bx_min = Bx_predicted.min()
+Bx_max = Bx_predicted.max()
 
-    # Get non-zero indices for the magnetic field components
-    non_zero_indices = np.nonzero(mask.flatten())
+# Plot the 3D scatter plot
+fig = plt.figure(figsize=(15, 13))
+ax = fig.add_subplot(111, projection='3d')
 
-    # Scatter plot of non-zero magnetic field components
-    if len(non_zero_indices[0]) > 0:
-        sc = ax.scatter(z_flattened[non_zero_indices], x_flattened[non_zero_indices],
-                        y_flattened[non_zero_indices], c=Bx_flattened[non_zero_indices],
-                        cmap='viridis', s=20, vmin=Bx.min(), vmax=Bx.max(), label='Bx')
-        fig.colorbar(sc, label='Bx')
-        sc = ax.scatter(z_flattened[non_zero_indices], x_flattened[non_zero_indices],
-                        y_flattened[non_zero_indices], c=By_flattened[non_zero_indices],
-                        cmap='viridis', s=20, vmin=By.min(), vmax=By.max(), label='By')
-        fig.colorbar(sc, label='By')
-        sc = ax.scatter(z_flattened[non_zero_indices], x_flattened[non_zero_indices],
-                        y_flattened[non_zero_indices], c=Bz_flattened[non_zero_indices],
-                        cmap='viridis', s=20, vmin=Bz.min(), vmax=Bz.max(), label='Bz')
-        fig.colorbar(sc, label='Bz')
-    else:
-        # Add a placeholder plot for all-zero data
-        ax.text2D(0.5, 0.5, "No Data", horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
+sc = ax.scatter(Z_filtered, X_filtered, Y_filtered, c=Bx_filtered, cmap='viridis', s=20, vmin=Bx_min, vmax=Bx_max)
+fig.colorbar(sc, label='B')
 
-    # Set axis limits
-    ax.set_xlim(0, n_pixels)
-    ax.set_ylim(0, n_pixels)
-    ax.set_zlim(0, n_pixels)
+ax.set_xlabel('z')
+ax.set_ylabel('x')
+ax.set_zlabel('y')
+plt.title('3D Scatter Plot of Predicted Magnetic Field Bx (Filtered)')
 
-    # Customize plot appearance
-    ax.set_xlabel('Z')
-    ax.set_ylabel('X')
-    ax.set_zlabel('Y')
-    ax.set_title(title)
+plt.show()
 
-    # Adjust viewing angle
-    ax.view_init(elev=30, azim=-60)
+# 2D SLICE PLOTTING
 
-    # Format the tick labels to reduce precision
-    ax.xaxis.set_major_locator(MaxNLocator(nbins=5))
-    ax.yaxis.set_major_locator(MaxNLocator(nbins=5))
-    ax.zaxis.set_major_locator(MaxNLocator(nbins=5))
+# Slice the data for a specific z-coordinate
+z_slice_index = int(n_pixels / 2)
+x_slice = X[:, :, z_slice_index]
+y_slice = Y[:, :, z_slice_index]
+Bx_slice = Bx_predicted[:, :, z_slice_index]
 
-    ax.xaxis.set_major_formatter(ScalarFormatter(useOffset=False, useMathText=True))
-    ax.yaxis.set_major_formatter(ScalarFormatter(useOffset=False, useMathText=True))
-    ax.zaxis.set_major_formatter(ScalarFormatter(useOffset=False, useMathText=True))
+# Apply the threshold to the slice
+mask_slice = np.abs(Bx_slice) >= precision_threshold_high
+x_slice_filtered = x_slice[mask_slice]
+y_slice_filtered = y_slice[mask_slice]
+Bx_slice_filtered = Bx_slice[mask_slice]
 
-    plt.show()
+# Plot the 2D scatter plot
+fig = plt.figure(figsize=(15, 13))
+ax = fig.add_subplot(111)
 
+sc = ax.scatter(x_slice_filtered, y_slice_filtered, c=Bx_slice_filtered, cmap='viridis', s=20, vmin=Bx_min, vmax=Bx_max)
+fig.colorbar(sc, label='B')
 
-# 2D Heatmap for a slice in the z direction
-def plot_component_slice(B_component, slice_index, title, component_name):
-    fig, ax = plt.subplots(figsize=(15, 13))
+ax.set_xlabel('x')
+ax.set_ylabel('y')
+ax.set_title(f'Slice at z = {z[z_slice_index]:.2f} (Filtered)')
 
-    # Plot the heatmap for the specified z slice
-    c = ax.imshow(B_component[:, :, slice_index], cmap='viridis', origin='lower',
-                  extent=(0, n_pixels, 0, n_pixels), aspect='auto')
-    fig.colorbar(c, label=f'{component_name} Value')
-
-    # Customize plot appearance
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_title(f'{title} (Z = {slice_index})')
-
-    plt.show()
-
-
-# Plot the predicted magnetic field components in a scatter plot
-plot_magnetic_field_components(Bx_predicted, By_predicted, Bz_predicted, mask_predicted, 'Predicted Non-Zero Magnetic Field Components')
-
-# Plot a slice in the z direction (middle slice) for each component
-middle_slice_index = n_pixels // 2
-plot_component_slice(Bx_predicted, middle_slice_index, 'Predicted Bx Component Slice in Z Direction', 'Bx')
-plot_component_slice(By_predicted, middle_slice_index, 'Predicted By Component Slice in Z Direction', 'By')
-plot_component_slice(Bz_predicted, middle_slice_index, 'Predicted Bz Component Slice in Z Direction', 'Bz')
-
-
-
-# # Load the original magnetic field data components
-# Bx_original = np.load(PATH_TO_VOLUME_DATA + 'original_Bx_data.npy')
-# By_original = np.load(PATH_TO_VOLUME_DATA + 'original_By_data.npy')
-# Bz_original = np.load(PATH_TO_VOLUME_DATA + 'original_Bz_data.npy')
-
-# # Compute the magnitude of the original magnetic field vectors
-# B_magnitude_original = np.sqrt(Bx_original**2 + By_original**2 + Bz_original**2)
-
-# # Create a mask for non-zero magnitudes for original data
-# mask_original = B_magnitude_original > 0
-
-# # Plot the original magnetic field magnitudes in a scatter plot
-# plot_magnetic_field(Bx_original, By_original, Bz_original, B_magnitude_original, mask_original, 'Original Non-Zero Magnetic Field Magnitude')
-
-# # Plot a slice in the z direction (z = 64) for original data
-# z_slice_index = 64
-# plot_slice(B_magnitude_original, z_slice_index, 'Original Magnetic Field Magnitude Slice at Z = 64')
-
-
-print("Predicted magnetic field components for the 11th timestep:")
-print("Bx:", Bx_predicted)
-print("By:", By_predicted)
-print("Bz:", Bz_predicted)
+plt.show()
