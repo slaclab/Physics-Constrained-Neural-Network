@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """
-@author: Alexander Scheinker
+@author: Jason Curcio
+@credit: Alexander Scheinker
 """
 
 import numpy as np
@@ -58,50 +59,46 @@ PATH_TO_VOLUME_DATA  = '/pscratch/sd/j/jcurcio/pcnn/Volume_Data/'
 
 #%%
 
-# The 3D volumes have dimensions n_pixels*n_pixels*n_pixels
-n_pixels = 128
-
-n_timesteps = 200
+# The 3D volumes have dimensions x_pixels*y_pixels*z_pixels
+pixel_dimensions = (128, 128, 128) # x, y, z
+n_timesteps = 126
 
 # Import data
 
 # Charge density
-Q = np.zeros([n_timesteps,n_pixels,n_pixels,n_pixels,1])
-
-# Non-zero charge density locations
-Qnz = np.random.randn(n_timesteps, n_pixels, n_pixels, n_pixels, 1) * 0.01
+Q = np.zeros([n_timesteps,*pixel_dimensions,1])
 
 # Electric field components
-Ex = np.zeros([n_timesteps,n_pixels,n_pixels,n_pixels,1])
-Ey = np.zeros([n_timesteps,n_pixels,n_pixels,n_pixels,1])
-Ez = np.zeros([n_timesteps,n_pixels,n_pixels,n_pixels,1])
+Ex = np.zeros([n_timesteps,*pixel_dimensions,1])
+Ey = np.zeros([n_timesteps,*pixel_dimensions,1])
+Ez = np.zeros([n_timesteps,*pixel_dimensions,1])
 
 # Magnetic field components
-Bx = np.zeros([n_timesteps,n_pixels,n_pixels,n_pixels,1])
-By = np.zeros([n_timesteps,n_pixels,n_pixels,n_pixels,1])
-Bz = np.zeros([n_timesteps,n_pixels,n_pixels,n_pixels,1])
+Bx = np.zeros([n_timesteps,*pixel_dimensions,1])
+By = np.zeros([n_timesteps,*pixel_dimensions,1])
+Bz = np.zeros([n_timesteps,*pixel_dimensions,1])
 
 # Current density components
-Jx = np.random.randn(n_timesteps, n_pixels, n_pixels, n_pixels, 1) * 0.01
-Jy = np.random.randn(n_timesteps, n_pixels, n_pixels, n_pixels, 1) * 0.01
-Jz = np.random.randn(n_timesteps, n_pixels, n_pixels, n_pixels, 1) * 0.01
+Jx = np.zeros(n_timesteps,*pixel_dimensions, 1)
+Jy = np.zeros(n_timesteps,*pixel_dimensions, 1)
+Jz = np.zeros(n_timesteps,*pixel_dimensions, 1)
 
 # Load the data
 for n_load in np.arange(n_timesteps):
 
-    Q[n_load] = np.load(PATH_TO_VOLUME_DATA + f'q_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
+    Q[n_load] = np.load(PATH_TO_VOLUME_DATA + f'q_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
 
-    Ex[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Ex_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
-    Ey[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Ey_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
-    Ez[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Ez_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
+    Ex[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Ex_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
+    Ey[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Ey_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
+    Ez[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Ez_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
 
-    Bx[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Bx_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
-    By[n_load] = np.load(PATH_TO_VOLUME_DATA + f'By_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
-    Bz[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Bz_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
+    Bx[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Bx_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
+    By[n_load] = np.load(PATH_TO_VOLUME_DATA + f'By_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
+    Bz[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Bz_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
 
-    Jx[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Jx_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
-    Jy[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Jy_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
-    Jz[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Jz_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
+    Jx[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Jx_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
+    Jy[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Jy_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
+    Jz[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Jz_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
 
 
 # Latent space inputs, un-used, all zeros
@@ -122,21 +119,15 @@ By = By/Bxyz_all_max
 Bz = Bz/Bxyz_all_max
 
 # Make 3D field data for the PINN and No-Physics CNNs for current density
-Jxyz = np.zeros([n_timesteps,n_pixels,n_pixels,n_pixels,3])
+Jxyz = np.zeros([n_timesteps,*pixel_dimensions,3])
 Jxyz[:,:,:,:,0] = Jx[:,:,:,:,0]
 Jxyz[:,:,:,:,1] = Jy[:,:,:,:,0]
 Jxyz[:,:,:,:,2] = Jz[:,:,:,:,0]
 
-Bxyz = np.zeros([n_timesteps,n_pixels,n_pixels,n_pixels,3])
+Bxyz = np.zeros([n_timesteps,*pixel_dimensions,3])
 Bxyz[:,:,:,:,0] = Bx[:,:,:,:,0]
 Bxyz[:,:,:,:,1] = By[:,:,:,:,0]
 Bxyz[:,:,:,:,2] = Bz[:,:,:,:,0]
-
-# Non-zero charge density locations
-Qnz_3D = np.zeros([n_timesteps,n_pixels,n_pixels,n_pixels,3]).astype(np.float32)
-Qnz_3D[:,:,:,:,0] = Qnz[:,:,:,:,0]
-Qnz_3D[:,:,:,:,1] = Qnz[:,:,:,:,0]
-Qnz_3D[:,:,:,:,2] = Qnz[:,:,:,:,0]
 
 
 # In[11]:
@@ -164,14 +155,14 @@ ce = 2.99792458e8
 qe = 1.602e-19
 
 # Size of one pixel
-dx = (x_max_all-x_min_all)/(n_pixels-1)
-dy = (y_max_all-y_min_all)/(n_pixels-1)
-dz = (z_max_all-z_min_all)/(n_pixels-1)
+dx = (x_max_all-x_min_all)/(pixel_dimensions[0] - 1)
+dy = (y_max_all-y_min_all)/(pixel_dimensions[1] - 1)
+dz = (z_max_all-z_min_all)/(pixel_dimensions[2] - 1)
 
 # Axis for plotting
-x_axis = np.linspace(x_min_all,x_max_all,n_pixels)
-y_axis = np.linspace(y_min_all,y_max_all,n_pixels)
-z_axis = np.linspace(z_min_all,z_max_all,n_pixels)
+x_axis = np.linspace(x_min_all,x_max_all,pixel_dimensions[0])
+y_axis = np.linspace(y_min_all,y_max_all,pixel_dimensions[1])
+z_axis = np.linspace(z_min_all,z_max_all,pixel_dimensions[2])
 
 # Time step between saved beam volumes
 dt = 5e-11
@@ -194,19 +185,19 @@ d_dz = tf.keras.initializers.Constant(d_dz/2)
 
 # Single layerr 3D CNNs for taking partial x, y, and z derivatives
 def NN_ddx():
-    X = Input(shape = (n_pixels,n_pixels,n_pixels,1))
+    X = Input(shape = (None, None, None,1))
     X_x = Conv3D(1, kernel_size=3, kernel_initializer=d_dx, strides=[1,1,1], padding='SAME', trainable=False)(X)
     d_dx_model = Model(inputs=[X], outputs=[X_x])
     return d_dx_model
 
 def NN_ddy():
-    X = Input(shape = (n_pixels,n_pixels,n_pixels,1))
+    X = Input(shape = (None, None, None,1))
     X_y = Conv3D(1, kernel_size=3, kernel_initializer=d_dy, strides=[1,1,1], padding='SAME', trainable=False)(X)
     d_dy_model = Model(inputs=[X], outputs=[X_y])
     return d_dy_model
 
 def NN_ddz():
-    X = Input(shape = (n_pixels,n_pixels,n_pixels,1))
+    X = Input(shape = (None, None, None,1))
     X_z = Conv3D(1, kernel_size=3, kernel_initializer=d_dz, strides=[1,1,1], padding='SAME', trainable=False)(X)
     d_dz_model = Model(inputs=[X], outputs=[X_z])
     return d_dz_model
@@ -223,12 +214,12 @@ z_input = np.zeros([n_timesteps,8,8,8,1]).astype(np.float32)
 
 def Field_model():
 
-    # Regularlization
+    # Regularization
     l2w = 1e-6
 
     # Various resolution image inputs
-    X_in = Input(shape = (None,None,None,1))
-    ES_in = Input(shape = (None,None,None,1))
+    X_in = Input(shape=(None, None, None, 1))
+    ES_in = Input(shape=(None, None, None, 1))
 
     # Define a function to add a block of layers
     def conv_block(input_tensor, num_filters, kernel_size=3, strides=1, padding='same'):
@@ -238,6 +229,7 @@ def Field_model():
         x = Conv3D(num_filters, kernel_size=kernel_size, strides=strides, padding=padding, kernel_regularizer=l2_reg(l2w))(x)
         x = BatchNormalization()(x)
         x = LeakyReLU(alpha=0.1)(x)
+        return x
 
     def downsample_block(input_tensor, num_filters, pool_size=(2,2,2)):
         x = conv_block(input_tensor, num_filters)
@@ -261,9 +253,9 @@ def Field_model():
 
     # Expansive path
     u1 = upsample_block(b1, c4, 128)
-    u1 = upsample_block(u1, c3, 64)
-    u1 = upsample_block(u2, c2, 32)
-    u1 = upsample_block(u3, c1, 16)
+    u2 = upsample_block(u1, c3, 64)
+    u3 = upsample_block(u2, c2, 32)
+    u4 = upsample_block(u3, c1, 16)
 
     # Final convolutional layer
     outputs = Conv3D(1, kernel_size=1, activation='linear', dtype='float32')(u4)
@@ -279,6 +271,7 @@ def Field_model():
 
     # Return the model
     return CNN_model
+
 
 
 # In[12]:
@@ -478,25 +471,11 @@ for n_ep in range(N_epochs):
             Jx[n_t:n_t + 1],
             Jy[n_t:n_t + 1],
             Jz[n_t:n_t + 1],
-            Qnz[n_t:n_t + 1],
             Bx[n_t:n_t + 1],
             By[n_t:n_t + 1],
             Bz[n_t:n_t + 1]
         )
 
-        # print("Intermediate Values:")
-        # print(f"z_input: {z_input[n_t:n_t + 1]}")
-        # print(f"Jx: {Jx[n_t:n_t + 1]}")
-        # print(f"Jy: {Jy[n_t:n_t + 1]}")
-        # print(f"Jz: {Jz[n_t:n_t + 1]}")
-        # print(f"Qnz: {Qnz[n_t:n_t + 1]}")
-        # print(f"Bx: {Bx[n_t:n_t + 1]}")
-        # print(f"By: {By[n_t:n_t + 1]}")
-        # print(f"Bz: {Bz[n_t:n_t + 1]}")
-        # print(f"loss_B: {loss_B}")
-        # print(f"loss_Bx: {loss_Bx}")
-        # print(f"loss_By: {loss_By}")
-        # print(f"loss_Bz: {loss_Bz}")
 
         print('\n')
         print(f'Loss B = {loss_B:.11f}')

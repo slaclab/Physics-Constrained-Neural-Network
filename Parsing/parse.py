@@ -180,14 +180,11 @@ def readgdf(gdf_file, procfunc=_proc_print):
 
 # Cell 2: Data processing and binning
 # -------------------------------------------------------------------------------
-def process_data():
+def process_data(data):
     OUTPUT_PATH = '/pscratch/sd/j/jcurcio/pcnn/Volume_Data/'
 
-    n_pixels = 256
+    n_pixels = 128
     c = 2.99792458e8  # Speed of light
-
-    data = gdftomemory("PINN_trainingData_03.gdf")
-
 
     # Determine max height, max width, and max bunch length across all timesteps
     z_max_range = 0
@@ -234,7 +231,7 @@ def process_data():
 
 
     # Begin calculating and binning data
-    for step in range(len(data)):
+    for step in range(len(data)-1):
         # Retrieve data
         x = np.array(data[step].get("d").get("x"))
         y = np.array(data[step].get("d").get("y"))
@@ -330,8 +327,12 @@ def plot_variable(variable_name, data_length, xbins, ybins, data):
         file_path = OUTPUT_PATH + f'{variable_name}_3D_vol_{n_pixels}_{i}.npy'
         binned_data = np.load(file_path)
 
+        # Debug prints
+        print(f"Binned data stats: min={binned_data.min()}, max={binned_data.max()}, mean={binned_data.mean()}")
+
         if np.all(binned_data == 0):
             print(f"File contains only zeros: {file_path}")
+            continue
 
         z_data = data[i].get("d").get("z")
         z = np.array(z_data)
@@ -352,7 +353,7 @@ def plot_variable(variable_name, data_length, xbins, ybins, data):
         if len(non_zero_indices[0]) > 0:
             sc = ax.scatter(z_flattened[non_zero_indices], x_flattened[non_zero_indices],
                             y_flattened[non_zero_indices], c=binned_data.flatten()[non_zero_indices],
-                            cmap='viridis', s=50, vmin=0, vmax  =5e12)
+                            cmap='viridis', s=50, vmin=binned_data.min(), vmax=binned_data.max())
             fig.colorbar(sc, label=variable_name)
         else:
             ax.text2D(0.5, 0.5, "No Data", horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
@@ -398,15 +399,17 @@ def plot_variable(variable_name, data_length, xbins, ybins, data):
 
 # Main script execution
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Process GDF file and optionally plot data.')
+    parser = argparse.ArgumentParser()
     parser.add_argument('--plot', action='store_true', help='Plot the data after processing')
+    parser.add_argument('--parse', action='store_true', help='Parse the data')
     args = parser.parse_args()
 
-    process_data()
+    data = gdftomemory("PINN_trainingData_04.gdf")
+
+    if args.parse:
+        process_data(data)
 
     if args.plot:
-        data = gdftomemory("PINN_trainingData_03.gdf")
-
         n_pixels = 128
         global_x_min = -0.000524511592356779
         global_x_max = 0.0005244785471739739
@@ -417,4 +420,4 @@ if __name__ == "__main__":
         xbins = np.linspace(global_x_min, global_x_max, n_pixels + 1)
         ybins = np.linspace(global_y_min, global_y_max, n_pixels + 1)
 
-        plot_variable('q', data_length, xbins, ybins, data)
+        plot_variable('Ex', data_length, xbins, ybins, data)
