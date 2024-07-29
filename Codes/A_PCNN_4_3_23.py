@@ -61,7 +61,7 @@ PATH_TO_VOLUME_DATA  = '/pscratch/sd/j/jcurcio/pcnn/Volume_Data/'
 # The 3D volumes have dimensions n_pixels*n_pixels*n_pixels
 n_pixels = 128
 
-n_timesteps = 200
+n_timesteps = 125
 
 # Import data
 
@@ -151,11 +151,11 @@ e0 = tf.constant(8.85*1e-12, dtype=DTYPE)
 cc = tf.constant(2.99792e8, dtype=DTYPE)
 
 # Physical size of the volume around the beam
-x_max_all = 6.992009440856081e-05
-x_min_all = -6.997896993744958e-05
+x_max_all = 0.02327958684259186
+x_min_all = -0.02224844297333862
 
-y_max_all = 6.99964109005157e-05
-y_min_all = -6.949648426854683e-05
+y_max_all = 0.022809291051044577
+y_min_all = -0.022649236023638847
 
 z_max_all = 1.1389556140820954e-06
 z_min_all = 4.0295594061272973e-10
@@ -176,7 +176,7 @@ y_axis = np.linspace(y_min_all,y_max_all,n_pixels)
 z_axis = np.linspace(z_min_all,z_max_all,n_pixels)
 
 # Time step between saved beam volumes
-dt = 5e-11
+dt = 2e-10
 
 # Defined filters for derivatives as a convolutional layer
 d_dx = np.zeros([3,3,3])
@@ -534,8 +534,10 @@ def train_step(model_A, ES_in1,
 N_epochs = 10
 
 # Number of training data points to look at
-#Nt = int(0.75 * n_timesteps)
-Nt = 10
+Nt = int(0.75 * n_timesteps)
+#Nt = 10
+
+print(Nt)
 
 hist_B = []
 hist_Bx = []

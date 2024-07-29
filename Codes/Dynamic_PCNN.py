@@ -7,49 +7,18 @@
 """
 
 import numpy as np
-import h5py
-
 import tensorflow as tf
-from tensorflow.keras import mixed_precision
+from tensorflow.keras import layers, mixed_precision
+from tensorflow.keras.layers import Input, Conv3D, MaxPooling3D, UpSampling3D, Add, BatchNormalization, LeakyReLU, Dense, GlobalAveragePooling3D
+from tensorflow.keras.models import Model
+from tensorflow.keras.regularizers import l2 as l2_reg
+import matplotlib.pyplot as plt
+import time
 
-# policy = mixed_precision.Policy('mixed_float16')
-# mixed_precision.set_global_policy(policy)
+mixed_precision.set_global_policy(mixed_precision.Policy('mixed_float16'))
 
 # print('Compute dtype: %s' % policy.compute_dtype)
 # print('Variable dtype: %s' % policy.variable_dtype)
-
-
-from tensorflow.keras import layers
-from tensorflow.keras.layers import Input, Dense, Activation, Dropout, Conv3D, Conv3DTranspose, UpSampling2D
-from tensorflow.keras.layers import concatenate, Add, MaxPool3D, UpSampling3D, Reshape, Multiply, MaxPool2D
-from tensorflow.keras.layers import Conv2DTranspose, Conv2D, Flatten, BatchNormalization
-from tensorflow.keras.models import Model
-
-from tensorflow import keras
-
-from tensorflow.keras.regularizers import l2 as l2_reg
-from tensorflow.keras.regularizers import l1 as l1_reg
-from tensorflow.keras.regularizers import l1_l2 as l1_l2_reg
-
-import matplotlib.pyplot as plt
-import matplotlib
-import time
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib import cm
-
-import random
-from scipy.io import loadmat
-from scipy import misc
-import os
-import csv
-# from sklearn.preprocessing import QuantileTransformer, StandardScaler
-
-from scipy.ndimage import gaussian_filter
-from scipy.ndimage.interpolation import zoom
-from scipy import ndimage
-
-import gc
-import pickle
 
 DTYPE = 'float32'
 tf.keras.backend.set_floatx(DTYPE)
@@ -58,6 +27,17 @@ tf.keras.backend.set_floatx(DTYPE)
 PATH_TO_VOLUME_DATA  = '/pscratch/sd/j/jcurcio/pcnn/Volume_Data/'
 
 #%%
+
+# Configure GPU settings and mixed precision policy
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    try:
+        # Set memory growth to True for each GPU
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        print("GPUs are configured successfully.")
+    except RuntimeError as e:
+        print(e)
 
 # The 3D volumes have dimensions x_pixels*y_pixels*z_pixels
 pixel_dimensions = (128, 128, 128) # x, y, z
@@ -140,11 +120,11 @@ e0 = tf.constant(8.85*1e-12, dtype=DTYPE)
 cc = tf.constant(2.99792e8, dtype=DTYPE)
 
 # Physical size of the volume around the beam
-x_max_all = 6.992009440856081e-05
-x_min_all = -6.997896993744958e-05
+x_max_all = 0.02327958684259186
+x_min_all = -0.02224844297333862
 
-y_max_all = 6.99964109005157e-05
-y_min_all = -6.949648426854683e-05
+y_max_all = 0.022809291051044577
+y_min_all = -0.022649236023638847
 
 z_max_all = 1.1389556140820954e-06
 z_min_all = 4.0295594061272973e-10
@@ -165,7 +145,7 @@ y_axis = np.linspace(y_min_all,y_max_all,pixel_dimensions[1])
 z_axis = np.linspace(z_min_all,z_max_all,pixel_dimensions[2])
 
 # Time step between saved beam volumes
-dt = 5e-11
+dt = 2e-10
 
 # Defined filters for derivatives as a convolutional layer
 d_dx = np.zeros([3,3,3])
@@ -421,11 +401,6 @@ def get_grad(A_model,ES_in1,
 
 # In[19]:
 
-model_A = Field_model()
-lr = 1e-4
-optim_A = tf.keras.optimizers.Adam(learning_rate = lr)
-model_A.summary()
-
 #%%
 
 
@@ -446,9 +421,19 @@ def train_step(model_A, ES_in1,
 # In[ ]:
 
 
-# Number of epochs
-N_epochs = 10
+# Mirrored Strategy for multi-GPU training
+strategy = tf.distribute.MirroredStrategy()
 
+with strategy.scope():
+    model_A = Field_model()
+    lr = 1e-4
+    optim_A = tf.keras.optimizers.Adam(learning_rate=lr)
+    model_A.compile(optimizer=optim_A, loss='mse')  # Compile with the desired loss
+
+model_A.summary()
+
+# Number of epochs
+N_epochs = 5
 # Number of training data points to look at
 #Nt = int(0.75 * n_timesteps)
 Nt = 2
@@ -460,11 +445,13 @@ hist_Bz = []
 
 t11 = time.time()
 
+# Training loop
 for n_ep in range(N_epochs):
     for n_t in range(Nt):
         print(f'Starting single step {n_t + 1}/{Nt} of epoch {n_ep + 1}/{N_epochs}.')
         t1 = time.time()
 
+        # Note: The data needs to be handled correctly for distributed training
         loss_B, gA, loss_Bx, loss_By, loss_Bz = train_step(
             model_A,
             z_input[n_t:n_t + 1],
@@ -475,7 +462,6 @@ for n_ep in range(N_epochs):
             By[n_t:n_t + 1],
             Bz[n_t:n_t + 1]
         )
-
 
         print('\n')
         print(f'Loss B = {loss_B:.11f}')
@@ -490,10 +476,10 @@ for n_ep in range(N_epochs):
         hist_Bz.append(loss_Bz.numpy())
 
         t2 = time.time()
-        print(f'Step time: {t2 - t1:2f} seconds')
+        print(f'Step time: {t2 - t1:.2f} seconds')
 
 t22 = time.time()
-print(f'Total time: {t22 - t11:2f} seconds')
+print(f'Total time: {t22 - t11:.2f} seconds')
 
 # ------------------------------
 # Plotting the results at the end
