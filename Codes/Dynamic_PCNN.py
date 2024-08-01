@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import concurrent.futures
 import os
 import time
+import math
 
 # mixed_precision.set_global_policy(mixed_precision.Policy('mixed_float16'))
 
@@ -269,7 +270,7 @@ def check_nan(tensor, name=""):
     return False
 
 def B_fields(A_model, Jx_in1, Jy_in1, Jz_in1, ES_in1):
-    
+
     # Calculate vector potential fields
     Ax1, Ax1_yL = A_model([Jx_in1, ES_in1])
     Ay1, Ay1_yL = A_model([Jy_in1, ES_in1])
@@ -434,10 +435,14 @@ with strategy.scope():
 model_A.summary()
 
 # Number of epochs
-N_epochs = 1
+N_epochs = 10
+
 # Number of training data points to look at
 Nt = int(0.75 * n_timesteps)
 #Nt = 20
+
+# Curriculum represents the subset of timesteps per epoch
+current_curriculum = math.ceil(Nt * 0.1) # First epoch will have 10% of the training data
 
 print('Number of training timesteps: ', Nt)
 
@@ -450,7 +455,7 @@ t11 = time.time()
 
 # Training loop
 for n_ep in range(N_epochs):
-    for n_t in range(Nt):
+    for n_t in range(current_curriculum):
         print(f'Starting single step {n_t + 1}/{Nt} of epoch {n_ep + 1}/{N_epochs}.')
         t1 = time.time()
 
@@ -481,6 +486,8 @@ for n_ep in range(N_epochs):
         t2 = time.time()
         print(f'Step time: {t2 - t1:.2f} seconds')
 
+    current_curriculum += math.ceil(Nt * 0.1)
+
 t22 = time.time()
 print(f'Total time: {t22 - t11:.2f} seconds')
 
@@ -510,7 +517,7 @@ ax1.set_xlabel('Training Steps')
 ax1.set_ylabel('Loss B')
 ax1.set_title('Loss B over Training Steps')
 ax1.grid(True)
-add_annotations(ax1, steps, hist_B)
+#add_annotations(ax1, steps, hist_B)
 
 # Plot Loss Bx
 ax2 = plt.subplot(4, 1, 2)
@@ -519,7 +526,7 @@ ax2.set_xlabel('Training Steps')
 ax2.set_ylabel('Loss Bx')
 ax2.set_title('Loss Bx over Training Steps')
 ax2.grid(True)
-add_annotations(ax2, steps, hist_Bx)
+#add_annotations(ax2, steps, hist_Bx)
 
 # Plot Loss By
 ax3 = plt.subplot(4, 1, 3)
@@ -528,7 +535,7 @@ ax3.set_xlabel('Training Steps')
 ax3.set_ylabel('Loss By')
 ax3.set_title('Loss By over Training Steps')
 ax3.grid(True)
-add_annotations(ax3, steps, hist_By)
+#add_annotations(ax3, steps, hist_By)
 
 # Plot Loss Bz
 ax4 = plt.subplot(4, 1, 4)
@@ -537,7 +544,7 @@ ax4.set_xlabel('Training Steps')
 ax4.set_ylabel('Loss Bz')
 ax4.set_title('Loss Bz over Training Steps')
 ax4.grid(True)
-add_annotations(ax4, steps, hist_Bz)
+#add_annotations(ax4, steps, hist_Bz)
 
 # Adjust layout
 plt.tight_layout()
