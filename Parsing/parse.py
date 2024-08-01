@@ -108,7 +108,7 @@ def _parseblocks(f, params, procfunc):
             params[name] = value
 
 def process_step(args):
-    step, data, xbins, ybins, z_max_range, n_pixels, bin_volume, OUTPUT_PATH = args
+    step, data, xbins, ybins, zbins, pixel_dimensions, bin_volume, OUTPUT_PATH = args
     c = 2.99792458e8
 
     # Extract coordinates and charge information
@@ -139,8 +139,6 @@ def process_step(args):
 
     binning_result = {}
 
-    zbins = np.linspace(z.min(), z.min() + z_max_range, n_pixels + 1)
-
     for key, data_comp in components.items():
         if key == 'q':
             hist, _ = np.histogramdd((x[real_mask], y[real_mask], z[real_mask]), bins=[xbins, ybins, zbins], weights=data_comp[real_mask], density=True)
@@ -157,11 +155,11 @@ def process_step(args):
             grid_points = np.array([grid_x.flatten(), grid_y.flatten(), grid_z.flatten()]).T
 
             interpolated = griddata(points, data_comp[dummy_mask], grid_points, method='linear', fill_value=0)
-            hist = interpolated.reshape((n_pixels, n_pixels, n_pixels))
+            hist = interpolated.reshape(pixel_dimensions)
             binning_result[key] = hist
 
     for component, binned in binning_result.items():
-        np.save(OUTPUT_PATH + f'{component}_3D_vol_{n_pixels}_{step}.npy', binned)
+        np.save(OUTPUT_PATH + f'{component}_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{step}.npy', binned)
 
     Jx = components["q"][real_mask] * velocities["Bx"][real_mask] * c / bin_volume
     Jy = components["q"][real_mask] * velocities["By"][real_mask] * c / bin_volume
@@ -175,7 +173,7 @@ def process_step(args):
 
     for j_key, j_data in j_components.items():
         hist, _ = np.histogramdd((x[real_mask], y[real_mask], z[real_mask]), bins=[xbins, ybins, zbins], weights=j_data, density=True)
-        np.save(OUTPUT_PATH + f'{j_key}_3D_vol_{n_pixels}_{step}.npy', hist)
+        np.save(OUTPUT_PATH + f'{j_key}_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{step}.npy', hist)
 
     B_max_local = max(components["Bx"][real_mask].max(), components["By"][real_mask].max(), components["Bz"][real_mask].max())
     J_max_local = max(Jx.max(), Jy.max(), Jz.max())
@@ -184,8 +182,9 @@ def process_step(args):
 
 
 def process_data(data):
-    OUTPUT_PATH = '/pscratch/sd/j/jcurcio/pcnn/Volume_Data/'
-    n_pixels = 128
+    OUTPUT_PATH = '/sdf/scratch/rfar/jcurcio/Volume_Data/'
+    pixel_dimensions = (128, 128, 128)  # (n_pixels_x, n_pixels_y, n_pixels_z)
+    n_pixels_x, n_pixels_y, n_pixels_z = pixel_dimensions
 
     z_max_range = 0
     x_min = float("inf")
@@ -227,14 +226,13 @@ def process_data(data):
     print('zmax: ', z_max)
     print('z_max_range: ', z_max_range)
 
-    xbins = np.linspace(x_min, x_max, n_pixels + 1)
-    ybins = np.linspace(y_min, y_max, n_pixels + 1)
+    xbins = np.linspace(x_min, x_max, n_pixels_x + 1)
+    ybins = np.linspace(y_min, y_max, n_pixels_y + 1)
+    zbins = np.linspace(z_min, z_max, n_pixels_z + 1)
 
     bin_volume = z_max_range * (xbins[1] - xbins[0]) * (ybins[1] - ybins[0])
 
-
-
-    pool_args = [(step, data, xbins, ybins, z_max_range, n_pixels, bin_volume, OUTPUT_PATH) for step in range(len(data) - 1)]
+    pool_args = [(step, data, xbins, ybins, zbins, pixel_dimensions, bin_volume, OUTPUT_PATH) for step in range(len(data) - 1)]
 
     with Pool(cpu_count()) as pool:
         results = pool.map(process_step, pool_args)
@@ -250,36 +248,29 @@ def process_data(data):
     print("B_max_global:", B_max_global)
     print("J_max_global:", J_max_global)
 
-def compute_max_abs_value(variable_name, data_length, n_pixels, OUTPUT_PATH):
+def compute_max_abs_value(variable_name, data_length, pixel_dimensions, OUTPUT_PATH):
     max_abs_value = 0
     for i in range(data_length):
-        file_path = OUTPUT_PATH + f'{variable_name}_3D_vol_{n_pixels}_{i}.npy'
+        file_path = OUTPUT_PATH + f'{variable_name}_3D_vol_{pixel_dimensions}_{i}.npy'
         binned_data = np.load(file_path)
         max_abs_value = max(max_abs_value, np.abs(binned_data).max())
     return max_abs_value
 
 def plot_frame(args):
-    i, data, xbins, ybins, n_pixels, variable_name, OUTPUT_PATH, max_abs_value = args
+    i, data, xbins, ybins, zbins, pixel_dimensions, variable_name, OUTPUT_PATH, max_abs_value = args
     x_centers = 0.5 * (xbins[:-1] + xbins[1:])
     y_centers = 0.5 * (ybins[:-1] + ybins[1:])
+    z_centers = 0.5 * (zbins[:-1] + zbins[1:])
 
     fig = plt.figure(figsize=(20, 16))
     ax = fig.add_subplot(121, projection='3d')
 
-    file_path = OUTPUT_PATH + f'{variable_name}_3D_vol_{n_pixels}_{i}.npy'
+    file_path = OUTPUT_PATH + f'{variable_name}_3D_vol_{pixel_dimensions}_{i}.npy'
     binned_data = np.load(file_path)
 
     if np.all(binned_data == 0):
         print(f"File contains only zeros: {file_path}")
         return None
-
-    z_data = data[i].get("d").get("z")
-    z = np.array(z_data)
-    z_min_current = z.min()
-    z_max_current = z.max()
-
-    zbins = np.linspace(z_min_current, z_max_current, n_pixels + 1)
-    z_centers = 0.5 * (zbins[:-1] + zbins[1:])
 
     X, Y, Z = np.meshgrid(x_centers, y_centers, z_centers, indexing='ij')
 
@@ -297,7 +288,7 @@ def plot_frame(args):
     else:
         ax.text2D(0.5, 0.5, "No Data", horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
 
-    ax.set_xlim(z_min_current, z_max_current)
+    ax.set_xlim(z_centers[0], z_centers[-1])
     ax.set_ylim(xbins[0], xbins[-1])
     ax.set_zlim(ybins[0], ybins[-1])
 
@@ -317,7 +308,7 @@ def plot_frame(args):
     ax.zaxis.set_major_formatter(ScalarFormatter(useOffset=False, useMathText=True))
 
     ax2 = fig.add_subplot(122)
-    z_slice_index = n_pixels // 2
+    z_slice_index = n_pixels_z // 2
     slice_data = binned_data[:, :, z_slice_index]
     extent = [xbins[0], xbins[-1], ybins[0], ybins[-1]]
     im = ax2.imshow(slice_data.T, extent=extent, origin='lower', aspect='equal', cmap='viridis', vmin=-max_abs_value, vmax=max_abs_value)
@@ -332,14 +323,14 @@ def plot_frame(args):
     print(f"Saved frame {i} as {filename}")
     return filename
 
-def plot_variable(variable_name, data_length, xbins, ybins, data):
-    OUTPUT_PATH = '/pscratch/sd/j/jcurcio/pcnn/Volume_Data/'
-    n_pixels = 128
+def plot_variable(variable_name, data_length, xbins, ybins, zbins, data):
+    OUTPUT_PATH = '/sdf/scratch/rfar/jcurcio/Volume_Data/'
+    pixel_dimensions = (128, 128, 128)  # (n_pixels_x, n_pixels_y, n_pixels_z)
 
-    max_abs_value = compute_max_abs_value(variable_name, data_length, n_pixels, OUTPUT_PATH)
+    max_abs_value = compute_max_abs_value(variable_name, data_length, pixel_dimensions, OUTPUT_PATH)
     print(f'Max absolute value for {variable_name}: {max_abs_value}')
 
-    pool_args = [(i, data, xbins, ybins, n_pixels, variable_name, OUTPUT_PATH, max_abs_value) for i in range(data_length)]
+    pool_args = [(i, data, xbins, ybins, zbins, pixel_dimensions, variable_name, OUTPUT_PATH, max_abs_value) for i in range(data_length)]
 
     with Pool(cpu_count()) as pool:
         filenames = pool.map(plot_frame, pool_args)
@@ -373,14 +364,16 @@ if __name__ == "__main__":
         print("npy files saved.")
 
     if args.plot:
-        n_pixels = 128
+        pixel_dimensions = (128, 128, 128)
         global_x_min = -0.022236700088973476
         global_x_max = 0.02330245305010191
         global_y_min = -0.022648254095570586
         global_y_max = 0.022816775174947665
 
         data_length = len(data) - 1
-        xbins = np.linspace(global_x_min, global_x_max, n_pixels + 1)
-        ybins = np.linspace(global_y_min, global_y_max, n_pixels + 1)
+        xbins = np.linspace(global_x_min, global_x_max, pixel_dimensions[0] + 1)
+        ybins = np.linspace(global_y_min, global_y_max, pixel_dimensions[1] + 1)
+        zbins = np.linspace(-0.5, 0.5, pixel_dimensions[2] + 1)
 
-        plot_variable('Bx', data_length, xbins, ybins, data)
+        plot_variable('Bx', data_length, xbins, ybins, zbins, data)
+

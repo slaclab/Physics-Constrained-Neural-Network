@@ -13,9 +13,11 @@ from tensorflow.keras.layers import Input, Conv3D, MaxPooling3D, UpSampling3D, A
 from tensorflow.keras.models import Model
 from tensorflow.keras.regularizers import l2 as l2_reg
 import matplotlib.pyplot as plt
+import concurrent.futures
+import os
 import time
 
-mixed_precision.set_global_policy(mixed_precision.Policy('mixed_float16'))
+# mixed_precision.set_global_policy(mixed_precision.Policy('mixed_float16'))
 
 # print('Compute dtype: %s' % policy.compute_dtype)
 # print('Variable dtype: %s' % policy.variable_dtype)
@@ -24,12 +26,13 @@ DTYPE = 'float32'
 tf.keras.backend.set_floatx(DTYPE)
 
 
-PATH_TO_VOLUME_DATA  = '/pscratch/sd/j/jcurcio/pcnn/Volume_Data/'
+PATH_TO_VOLUME_DATA  = '/sdf/scratch/rfar/jcurcio/Volume_Data/'
 
 #%%
 
 # Configure GPU settings and mixed precision policy
 gpus = tf.config.list_physical_devices('GPU')
+print(f"GPUs detected: {gpus}")
 if gpus:
     try:
         # Set memory growth to True for each GPU
@@ -43,71 +46,73 @@ if gpus:
 pixel_dimensions = (128, 128, 128) # x, y, z
 n_timesteps = 126
 
+
 # Import data
 
+# Function to load a single time step's data
+def load_data(n_load):
+    Q = np.load(os.path.join(PATH_TO_VOLUME_DATA, f'q_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy')).reshape([1, *pixel_dimensions, 1])
+    Ex = np.load(os.path.join(PATH_TO_VOLUME_DATA, f'Ex_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy')).reshape([1, *pixel_dimensions, 1])
+    Ey = np.load(os.path.join(PATH_TO_VOLUME_DATA, f'Ey_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy')).reshape([1, *pixel_dimensions, 1])
+    Ez = np.load(os.path.join(PATH_TO_VOLUME_DATA, f'Ez_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy')).reshape([1, *pixel_dimensions, 1])
+    Bx = np.load(os.path.join(PATH_TO_VOLUME_DATA, f'Bx_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy')).reshape([1, *pixel_dimensions, 1])
+    By = np.load(os.path.join(PATH_TO_VOLUME_DATA, f'By_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy')).reshape([1, *pixel_dimensions, 1])
+    Bz = np.load(os.path.join(PATH_TO_VOLUME_DATA, f'Bz_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy')).reshape([1, *pixel_dimensions, 1])
+    Jx = np.load(os.path.join(PATH_TO_VOLUME_DATA, f'Jx_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy')).reshape([1, *pixel_dimensions, 1])
+    Jy = np.load(os.path.join(PATH_TO_VOLUME_DATA, f'Jy_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy')).reshape([1, *pixel_dimensions, 1])
+    Jz = np.load(os.path.join(PATH_TO_VOLUME_DATA, f'Jz_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy')).reshape([1, *pixel_dimensions, 1])
+    return Q, Ex, Ey, Ez, Bx, By, Bz, Jx, Jy, Jz
+
+# Prepare storage arrays
+
 # Charge density
-Q = np.zeros([n_timesteps,*pixel_dimensions,1])
+Q = np.zeros([n_timesteps, *pixel_dimensions, 1])
 
 # Electric field components
-Ex = np.zeros([n_timesteps,*pixel_dimensions,1])
-Ey = np.zeros([n_timesteps,*pixel_dimensions,1])
-Ez = np.zeros([n_timesteps,*pixel_dimensions,1])
+Ex = np.zeros([n_timesteps, *pixel_dimensions, 1])
+Ey = np.zeros([n_timesteps, *pixel_dimensions, 1])
+Ez = np.zeros([n_timesteps, *pixel_dimensions, 1])
 
 # Magnetic field components
-Bx = np.zeros([n_timesteps,*pixel_dimensions,1])
-By = np.zeros([n_timesteps,*pixel_dimensions,1])
-Bz = np.zeros([n_timesteps,*pixel_dimensions,1])
+Bx = np.zeros([n_timesteps, *pixel_dimensions, 1])
+By = np.zeros([n_timesteps, *pixel_dimensions, 1])
+Bz = np.zeros([n_timesteps, *pixel_dimensions, 1])
 
-# Current density components
-Jx = np.zeros(n_timesteps,*pixel_dimensions, 1)
-Jy = np.zeros(n_timesteps,*pixel_dimensions, 1)
-Jz = np.zeros(n_timesteps,*pixel_dimensions, 1)
+# Current Density components
+Jx = np.zeros([n_timesteps, *pixel_dimensions, 1])
+Jy = np.zeros([n_timesteps, *pixel_dimensions, 1])
+Jz = np.zeros([n_timesteps, *pixel_dimensions, 1])
 
-# Load the data
-for n_load in np.arange(n_timesteps):
+# Load data in parallel
+with concurrent.futures.ThreadPoolExecutor() as executor:
+    futures = [executor.submit(load_data, n_load) for n_load in range(n_timesteps)]
+    for i, future in enumerate(concurrent.futures.as_completed(futures)):
+        Q[i], Ex[i], Ey[i], Ez[i], Bx[i], By[i], Bz[i], Jx[i], Jy[i], Jz[i] = future.result()
 
-    Q[n_load] = np.load(PATH_TO_VOLUME_DATA + f'q_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
+# Normalize data
+J_max_max_all_128 = np.load(os.path.join(PATH_TO_VOLUME_DATA, 'J_max_max_all_128.npy'))
+Bxyz_all_max = np.load(os.path.join(PATH_TO_VOLUME_DATA, 'Bxyz_max.npy'))
 
-    Ex[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Ex_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
-    Ey[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Ey_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
-    Ez[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Ez_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
+Jx = Jx / J_max_max_all_128
+Jy = Jy / J_max_max_all_128
+Jz = Jz / J_max_max_all_128
 
-    Bx[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Bx_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
-    By[n_load] = np.load(PATH_TO_VOLUME_DATA + f'By_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
-    Bz[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Bz_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
-
-    Jx[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Jx_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
-    Jy[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Jy_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
-    Jz[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Jz_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,*pixel_dimensions,1])
-
-
-# Latent space inputs, un-used, all zeros
-z_input = np.zeros([n_timesteps,8,8,8,1]).astype(np.float32)
-
-# Used to un-normalize PINN and no-physics CNN outputs
-Bxyz_all_max = np.load(PATH_TO_VOLUME_DATA + 'Bxyz_max.npy')
-
-# Normalize CNN inputs
-J_max_max_all_128 = np.load(PATH_TO_VOLUME_DATA+'J_max_max_all_128.npy')
-
-Jx = Jx/J_max_max_all_128
-Jy = Jy/J_max_max_all_128
-Jz = Jz/J_max_max_all_128
-
-Bx = Bx/Bxyz_all_max
-By = By/Bxyz_all_max
-Bz = Bz/Bxyz_all_max
+Bx = Bx / Bxyz_all_max
+By = By / Bxyz_all_max
+Bz = Bz / Bxyz_all_max
 
 # Make 3D field data for the PINN and No-Physics CNNs for current density
-Jxyz = np.zeros([n_timesteps,*pixel_dimensions,3])
-Jxyz[:,:,:,:,0] = Jx[:,:,:,:,0]
-Jxyz[:,:,:,:,1] = Jy[:,:,:,:,0]
-Jxyz[:,:,:,:,2] = Jz[:,:,:,:,0]
+Jxyz = np.zeros([n_timesteps, *pixel_dimensions, 3])
+Jxyz[:, :, :, :, 0] = Jx[:, :, :, :, 0]
+Jxyz[:, :, :, :, 1] = Jy[:, :, :, :, 0]
+Jxyz[:, :, :, :, 2] = Jz[:, :, :, :, 0]
 
-Bxyz = np.zeros([n_timesteps,*pixel_dimensions,3])
-Bxyz[:,:,:,:,0] = Bx[:,:,:,:,0]
-Bxyz[:,:,:,:,1] = By[:,:,:,:,0]
-Bxyz[:,:,:,:,2] = Bz[:,:,:,:,0]
+Bxyz = np.zeros([n_timesteps, *pixel_dimensions, 3])
+Bxyz[:, :, :, :, 0] = Bx[:, :, :, :, 0]
+Bxyz[:, :, :, :, 1] = By[:, :, :, :, 0]
+Bxyz[:, :, :, :, 2] = Bz[:, :, :, :, 0]
+
+print('Data loaded.')
 
 
 # In[11]:
@@ -120,14 +125,14 @@ e0 = tf.constant(8.85*1e-12, dtype=DTYPE)
 cc = tf.constant(2.99792e8, dtype=DTYPE)
 
 # Physical size of the volume around the beam
-x_max_all = 0.02327958684259186
-x_min_all = -0.02224844297333862
+x_max_all = 0.02330245305010191
+x_min_all = -0.022236700088973476
 
-y_max_all = 0.022809291051044577
-y_min_all = -0.022649236023638847
+y_max_all = 0.022816775174947665
+y_min_all = -0.022648254095570586
 
-z_max_all = 1.1389556140820954e-06
-z_min_all = 4.0295594061272973e-10
+z_max_all = 2.506212532199165
+z_min_all = -0.02978222312137019
 
 # More physics constants
 me = 9.109384e-31
@@ -257,120 +262,125 @@ def Field_model():
 # In[12]:
 
 
-def B_fields(A_model,Jx_in1,Jy_in1,Jz_in1,A_cut_now1,ES_in1):
+def check_nan(tensor, name=""):
+    if tf.reduce_any(tf.math.is_nan(tensor)):
+        print(f"NaN detected in {name}")
+        return True
+    return False
 
+def B_fields(A_model, Jx_in1, Jy_in1, Jz_in1, ES_in1):
+    
     # Calculate vector potential fields
-    Ax1, Ax1_yL = A_model([Jx_in1,ES_in1])
-    Ay1, Ay1_yL = A_model([Jy_in1,ES_in1])
-    Az1, Az1_yL = A_model([Jz_in1,ES_in1])
+    Ax1, Ax1_yL = A_model([Jx_in1, ES_in1])
+    Ay1, Ay1_yL = A_model([Jy_in1, ES_in1])
+    Az1, Az1_yL = A_model([Jz_in1, ES_in1])
+
+    # Check for NaNs in Ax1, Ay1, Az1
+    if check_nan(Ax1, "Ax1") or check_nan(Ay1, "Ay1") or check_nan(Az1, "Az1"):
+        return None, None, None, None, None, None
 
     # Take derivatives
-    Ax1_y = mNN_ddy(Ax1)/dy
-    Ax1_z = mNN_ddz(Ax1)/dz
+    Ax1_y = mNN_ddy(Ax1) / dy
+    Ax1_z = mNN_ddz(Ax1) / dz
 
-    Ay1_x = mNN_ddx(Ay1)/dx
-    Ay1_z = mNN_ddz(Ay1)/dz
+    Ay1_x = mNN_ddx(Ay1) / dx
+    Ay1_z = mNN_ddz(Ay1) / dz
 
-    Az1_x = mNN_ddx(Az1)/dx
-    Az1_y = mNN_ddy(Az1)/dy
+    Az1_x = mNN_ddx(Az1) / dx
+    Az1_y = mNN_ddy(Az1) / dy
+
+    # Check for NaNs in derivatives
+    if (check_nan(Ax1_y, "Ax1_y") or check_nan(Ax1_z, "Ax1_z") or
+        check_nan(Ay1_x, "Ay1_x") or check_nan(Ay1_z, "Ay1_z") or
+        check_nan(Az1_x, "Az1_x") or check_nan(Az1_y, "Az1_y")):
+        print('NaN in derivative')
+        return None, None, None, None, None, None
 
     # Magnetic Fields
-    Bx1 = Az1_y - Ay1_z
-    By1 = Ax1_z - Az1_x
-    Bz1 = Ay1_x - Ax1_y
+    Bx1 = (Az1_y - Ay1_z)
+    By1 = (Ax1_z - Az1_x)
+    Bz1 = (Ay1_x - Ax1_y)
 
-    Bx1 = Bx1*A_cut_now1
-    By1 = By1*A_cut_now1
-    Bz1 = Bz1*A_cut_now1
+    # Check for NaNs in magnetic fields
+    if check_nan(Bx1, "Bx1") or check_nan(By1, "By1") or check_nan(Bz1, "Bz1"):
+        print('NaN in magnetic fields')
+        return None, None, None, None, None, None
 
     return Ax1, Ay1, Az1, Bx1, By1, Bz1
+
 
 
 # In[13]:
 
 
-def A_fields_only(A_model,Jx_in1,Jy_in1,Jz_in1,A_cut_now1,ES_in1):
+def A_fields_only(A_model, Jx_in1, Jy_in1, Jz_in1, ES_in1):
 
     # Calculate vector potential fields
-    Ax1, Ax1_yL = A_model([Jx_in1,ES_in1])
-    Ay1, Ay1_yL = A_model([Jy_in1,ES_in1])
-    Az1, Az1_yL = A_model([Jz_in1,ES_in1])
-
-    # Cut off
-    Ax1 = Ax1*A_cut_now1
-    Ay1 = Ay1*A_cut_now1
-    Az1 = Az1*A_cut_now1
+    Ax1, Ax1_yL = A_model([Jx_in1, ES_in1])
+    Ay1, Ay1_yL = A_model([Jy_in1, ES_in1])
+    Az1, Az1_yL = A_model([Jz_in1, ES_in1])
 
     return Ax1, Ay1, Az1
+
 
 
 # In[14]:
 
 
-def E_fields(V_model,Q_in2,Ax2_t,Ay2_t,Az2_t,A_cut_now2,ES_in1):
+def E_fields(V_model, Q_in2, Ax2_t, Ay2_t, Az2_t, ES_in1):
 
     # Calculate voltage fields
-    V2, V2_yL = V_model([Q_in2,ES_in1])
+    V2, V2_yL = V_model([Q_in2, ES_in1])
 
     # Take derivatives
-    V2_x = mNN_ddx(V2)/dx
-    V2_y = mNN_ddy(V2)/dy
-    V2_z = mNN_ddz(V2)/dz
+    V2_x = mNN_ddx(V2) / dx
+    V2_y = mNN_ddy(V2) / dy
+    V2_z = mNN_ddz(V2) / dz
 
     # Electric fields
     Ex2 = -Ax2_t - V2_x
     Ey2 = -Ay2_t - V2_y
     Ez2 = -Az2_t - V2_z
 
-    Ex2 = Ex2*A_cut_now2
-    Ey2 = Ey2*A_cut_now2
-    Ez2 = Ez2*A_cut_now2
-
     return V2, Ex2, Ey2, Ez2
+
 
 
 
 # In[15]:
 
 
-def V_fields_only(V_model,Q_in2,A_cut_now2,ES_in1):
+def V_fields_only(V_model, Q_in2, ES_in1):
 
     # Calculate voltage fields
-    V2, V2_yL = V_model([Q_in2,ES_in1])
-
-    # Cut off
-    V2 = V2*A_cut_now2
+    V2, V2_yL = V_model([Q_in2, ES_in1])
 
     return V2
+
 
 
 # In[16]:
 
 
-def A_Phi_constraint(A_model,ES_in1,
-                     Jx_in1, Jy_in1, Jz_in1, A_cut_now1):
+def A_Phi_constraint(A_model, ES_in1, Jx_in1, Jy_in1, Jz_in1):
 
     # Calculate A and B fields
-    Ax1, Ay1, Az1, Bx1, By1, Bz1 = B_fields(A_model,Jx_in1,Jy_in1,Jz_in1,A_cut_now1,ES_in1)
+    Ax1, Ay1, Az1, Bx1, By1, Bz1 = B_fields(A_model, Jx_in1, Jy_in1, Jz_in1, ES_in1)
+    return Bx1, By1, Bz1
 
-    return Bx1,By1,Bz1
 
 
 # In[24]:
 
 
-def compute_loss(A_model,ES_in1,
-                     Jx_in1, Jy_in1, Jz_in1, A_cut_now1,
-                     Bx1_tr, By1_tr, Bz1_tr
-                 ):
+def compute_loss(A_model, ES_in1, Jx_in1, Jy_in1, Jz_in1, Bx1_tr, By1_tr, Bz1_tr):
 
-    Bx1,By1,Bz1 = A_Phi_constraint(A_model,ES_in1,
-                         Jx_in1, Jy_in1, Jz_in1, A_cut_now1)
+    Bx1, By1, Bz1 = A_Phi_constraint(A_model, ES_in1, Jx_in1, Jy_in1, Jz_in1)
 
     # B field
-    loss_Bx = tf.reduce_mean(tf.square(Bx1-Bx1_tr))
-    loss_By = tf.reduce_mean(tf.square(By1-By1_tr))
-    loss_Bz = tf.reduce_mean(tf.square(Bz1-Bz1_tr))*100.0
+    loss_Bx = tf.reduce_mean(tf.square(Bx1 - Bx1_tr))
+    loss_By = tf.reduce_mean(tf.square(By1 - By1_tr))
+    loss_Bz = tf.reduce_mean(tf.square(Bz1 - Bz1_tr)) * 100.0
 
     # Total loss
     loss_B = loss_Bx + loss_By + loss_Bz
@@ -381,19 +391,13 @@ def compute_loss(A_model,ES_in1,
 # In[25]:
 
 
-def get_grad(A_model,ES_in1,
-                     Jx_in1, Jy_in1, Jz_in1, A_cut_now1,
-                     Bx1_tr, By1_tr, Bz1_tr
-                 ):
+def get_grad(A_model, ES_in1, Jx_in1, Jy_in1, Jz_in1, Bx1_tr, By1_tr, Bz1_tr):
 
     with tf.GradientTape(persistent=True) as tape:
         tape.watch(A_model.trainable_variables)
-        loss_B, loss_Bx, loss_By, loss_Bz = compute_loss(A_model,ES_in1,
-                             Jx_in1, Jy_in1, Jz_in1, A_cut_now1,
-                             Bx1_tr, By1_tr, Bz1_tr
-                         )
-    gA = tape.gradient(loss_B, A_model.trainable_variables)
+        loss_B, loss_Bx, loss_By, loss_Bz = compute_loss(A_model, ES_in1, Jx_in1, Jy_in1, Jz_in1, Bx1_tr, By1_tr, Bz1_tr)
 
+    gA = tape.gradient(loss_B, A_model.trainable_variables)
     del tape
 
     return loss_B, gA, loss_Bx, loss_By, loss_Bz
@@ -404,22 +408,19 @@ def get_grad(A_model,ES_in1,
 #%%
 
 
-def train_step(model_A, ES_in1,
-                     Jx_in1, Jy_in1, Jz_in1, A_cut_now1,
-                     Bx1_tr, By1_tr, Bz1_tr):
+def train_step(model_A, ES_in1, Jx_in1, Jy_in1, Jz_in1, Bx1_tr, By1_tr, Bz1_tr):
 
-    loss_B, gA, loss_Bx, loss_By, loss_Bz = get_grad(model_A,ES_in1,
-                         Jx_in1, Jy_in1, Jz_in1, A_cut_now1,
-                         Bx1_tr, By1_tr, Bz1_tr
-                     )
+    loss_B, gA, loss_Bx, loss_By, loss_Bz = get_grad(model_A, ES_in1, Jx_in1, Jy_in1, Jz_in1, Bx1_tr, By1_tr, Bz1_tr)
 
     optim_A.apply_gradients(zip(gA, model_A.trainable_variables))
 
     return loss_B, gA, loss_Bx, loss_By, loss_Bz
 
 
+
 # In[ ]:
 
+print('Beginning training')
 
 # Mirrored Strategy for multi-GPU training
 strategy = tf.distribute.MirroredStrategy()
@@ -427,16 +428,18 @@ strategy = tf.distribute.MirroredStrategy()
 with strategy.scope():
     model_A = Field_model()
     lr = 1e-4
-    optim_A = tf.keras.optimizers.Adam(learning_rate=lr)
+    optim_A = tf.keras.optimizers.Adam(learning_rate=lr, clipvalue=1.0)
     model_A.compile(optimizer=optim_A, loss='mse')  # Compile with the desired loss
 
 model_A.summary()
 
 # Number of epochs
-N_epochs = 5
+N_epochs = 1
 # Number of training data points to look at
-#Nt = int(0.75 * n_timesteps)
-Nt = 2
+Nt = int(0.75 * n_timesteps)
+#Nt = 20
+
+print('Number of training timesteps: ', Nt)
 
 hist_B = []
 hist_Bx = []
@@ -538,5 +541,6 @@ add_annotations(ax4, steps, hist_Bz)
 
 # Adjust layout
 plt.tight_layout()
-plt.show()
+plt.savefig('training_loss_plot.png')
+plt.close()
 # ------------------------------

@@ -54,12 +54,13 @@ DTYPE = 'float32'
 tf.keras.backend.set_floatx(DTYPE)
 
 
-PATH_TO_VOLUME_DATA  = '/pscratch/sd/j/jcurcio/pcnn/Volume_Data/'
+PATH_TO_VOLUME_DATA  = '/sdf/scratch/rfar/jcurcio/Volume_Data/'
 
 #%%
 
 # The 3D volumes have dimensions n_pixels*n_pixels*n_pixels
 n_pixels = 128
+pixel_dimensions = (128, 128, 128)
 
 n_timesteps = 125
 
@@ -89,21 +90,21 @@ Jz = np.zeros([n_timesteps,n_pixels,n_pixels,n_pixels,1])
 # Load the data
 for n_load in np.arange(n_timesteps):
 
-    Q[n_load] = np.load(PATH_TO_VOLUME_DATA + f'q_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
+    Q[n_load] = np.load(PATH_TO_VOLUME_DATA + f'q_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
 
     #Qnz[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Qnz_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
 
-    Ex[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Ex_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
-    Ey[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Ey_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
-    Ez[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Ez_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
+    Ex[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Ex_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
+    Ey[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Ey_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
+    Ez[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Ez_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
 
-    Bx[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Bx_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
-    By[n_load] = np.load(PATH_TO_VOLUME_DATA + f'By_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
-    Bz[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Bz_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
+    Bx[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Bx_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
+    By[n_load] = np.load(PATH_TO_VOLUME_DATA + f'By_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
+    Bz[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Bz_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
 
-    Jx[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Jx_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
-    Jy[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Jy_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
-    Jz[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Jz_3D_vol_{n_pixels}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
+    Jx[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Jx_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
+    Jy[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Jy_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
+    Jz[n_load] = np.load(PATH_TO_VOLUME_DATA + f'Jz_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{n_load}.npy').reshape([1,n_pixels,n_pixels,n_pixels,1])
 
 
 # Latent space inputs, un-used, all zeros
@@ -151,14 +152,14 @@ e0 = tf.constant(8.85*1e-12, dtype=DTYPE)
 cc = tf.constant(2.99792e8, dtype=DTYPE)
 
 # Physical size of the volume around the beam
-x_max_all = 0.02327958684259186
-x_min_all = -0.02224844297333862
+x_max_all = 0.02330245305010191
+x_min_all = -0.022236700088973476
 
-y_max_all = 0.022809291051044577
-y_min_all = -0.022649236023638847
+y_max_all = 0.022816775174947665
+y_min_all = -0.022648254095570586
 
-z_max_all = 1.1389556140820954e-06
-z_min_all = 4.0295594061272973e-10
+z_max_all = 2.506212532199165
+z_min_all = -0.02978222312137019
 
 # More physics constants
 me = 9.109384e-31
@@ -641,4 +642,6 @@ add_annotations(ax4, steps, hist_Bz)
 # Adjust layout
 plt.tight_layout()
 plt.show()
+plt.savefig('A_loss.png')
+plt.close()
 # ------------------------------
