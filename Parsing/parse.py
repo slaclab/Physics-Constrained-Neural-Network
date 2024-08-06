@@ -107,85 +107,9 @@ def _parseblocks(f, params, procfunc):
         elif is_sval:
             params[name] = value
 
-def process_step(args):
-    step, data, xbins, ybins, zbins, pixel_dimensions, bin_volume, OUTPUT_PATH = args
-    c = 2.99792458e8
-
-    # Extract coordinates and charge information
-    x = np.array(data[step].get("d").get("x"))
-    y = np.array(data[step].get("d").get("y"))
-    z = np.array(data[step].get("d").get("z"))
-    q = np.array(data[step].get("d").get("q"))
-
-    # Mask for real and dummy particles
-    real_mask = q != 0
-    dummy_mask = q == 0
-
-    components = {
-        "Ex": np.array(data[step].get("d").get("fEx")),
-        "Ey": np.array(data[step].get("d").get("fEy")),
-        "Ez": np.array(data[step].get("d").get("fEz")),
-        "Bx": np.array(data[step].get("d").get("fBx")),
-        "By": np.array(data[step].get("d").get("fBy")),
-        "Bz": np.array(data[step].get("d").get("fBz")),
-        "q": np.array(data[step].get("d").get("q")),
-    }
-
-    velocities = {
-        "Bx": np.array(data[step].get("d").get("Bx")),
-        "By": np.array(data[step].get("d").get("By")),
-        "Bz": np.array(data[step].get("d").get("Bz")),
-    }
-
-    binning_result = {}
-
-    for key, data_comp in components.items():
-        if key == 'q':
-            hist, _ = np.histogramdd((x[real_mask], y[real_mask], z[real_mask]), bins=[xbins, ybins, zbins], weights=data_comp[real_mask], density=True)
-            binning_result[key] = hist
-        else:
-            points = np.array([x[dummy_mask], y[dummy_mask], z[dummy_mask]]).T
-
-            grid_x, grid_y, grid_z = np.meshgrid(
-                0.5 * (xbins[:-1] + xbins[1:]),
-                0.5 * (ybins[:-1] + ybins[1:]),
-                0.5 * (zbins[:-1] + zbins[1:]),
-                indexing='ij'
-            )
-            grid_points = np.array([grid_x.flatten(), grid_y.flatten(), grid_z.flatten()]).T
-
-            interpolated = griddata(points, data_comp[dummy_mask], grid_points, method='linear', fill_value=0)
-            hist = interpolated.reshape(pixel_dimensions)
-            binning_result[key] = hist
-
-    for component, binned in binning_result.items():
-        np.save(OUTPUT_PATH + f'{component}_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{step}.npy', binned)
-
-    Jx = components["q"][real_mask] * velocities["Bx"][real_mask] * c / bin_volume
-    Jy = components["q"][real_mask] * velocities["By"][real_mask] * c / bin_volume
-    Jz = components["q"][real_mask] * velocities["Bz"][real_mask] * c / bin_volume
-
-    j_components = {
-        "Jx": Jx,
-        "Jy": Jy,
-        "Jz": Jz,
-    }
-
-    for j_key, j_data in j_components.items():
-        hist, _ = np.histogramdd((x[real_mask], y[real_mask], z[real_mask]), bins=[xbins, ybins, zbins], weights=j_data, density=True)
-        np.save(OUTPUT_PATH + f'{j_key}_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{step}.npy', hist)
-
-    B_max_local = max(components["Bx"][real_mask].max(), components["By"][real_mask].max(), components["Bz"][real_mask].max())
-    J_max_local = max(Jx.max(), Jy.max(), Jz.max())
-
-    return B_max_local, J_max_local
 
 
-def process_data(data):
-    OUTPUT_PATH = '/sdf/scratch/rfar/jcurcio/Volume_Data/'
-    pixel_dimensions = (128, 128, 128)  # (n_pixels_x, n_pixels_y, n_pixels_z)
-    n_pixels_x, n_pixels_y, n_pixels_z = pixel_dimensions
-
+def global_xyz_real(data):
     z_max_range = 0
     x_min = float("inf")
     x_max = float("-inf")
@@ -226,9 +150,93 @@ def process_data(data):
     print('zmax: ', z_max)
     print('z_max_range: ', z_max_range)
 
-    xbins = np.linspace(x_min, x_max, n_pixels_x + 1)
-    ybins = np.linspace(y_min, y_max, n_pixels_y + 1)
-    zbins = np.linspace(z_min, z_max, n_pixels_z + 1)
+    return x_min, x_max, y_min, y_max, z_min, z_max, z_max_range
+
+
+def process_step(args):
+    step, data, xbins, ybins, zbins, pixel_dimensions, bin_volume, OUTPUT_PATH = args
+    c = 2.99792458e8
+
+    # Extract coordinates and charge information
+    x = np.array(data[step].get("d").get("x"))
+    y = np.array(data[step].get("d").get("y"))
+    z = np.array(data[step].get("d").get("z"))
+    q = np.array(data[step].get("d").get("q"))
+
+    # Mask for real and dummy particles
+    real_mask = q != 0
+    dummy_mask = q == 0
+
+    components = {
+        "Ex": np.array(data[step].get("d").get("fEx")),
+        "Ey": np.array(data[step].get("d").get("fEy")),
+        "Ez": np.array(data[step].get("d").get("fEz")),
+        "Bx": np.array(data[step].get("d").get("fBx")),
+        "By": np.array(data[step].get("d").get("fBy")),
+        "Bz": np.array(data[step].get("d").get("fBz")),
+        "q": np.array(data[step].get("d").get("q")),
+    }
+
+    # Betas
+    velocities = {
+        "Bx": np.array(data[step].get("d").get("Bx")),
+        "By": np.array(data[step].get("d").get("By")),
+        "Bz": np.array(data[step].get("d").get("Bz")),
+    }
+
+    binning_result = {}
+
+    for key, data_comp in components.items():
+        # If binning rho, add values and divide by bin volume
+        if key == 'q':
+            hist, _ = np.histogramdd((x[real_mask], y[real_mask], z[real_mask]), bins=[xbins, ybins, zbins], weights=data_comp[real_mask], density=True)
+            binning_result[key] = hist
+        else:
+            points = np.array([x[dummy_mask], y[dummy_mask], z[dummy_mask]]).T
+
+            # Create a mesh grid for interpolation
+            grid_x, grid_y, grid_z = np.meshgrid(
+                0.5 * (xbins[:-1] + xbins[1:]),
+                0.5 * (ybins[:-1] + ybins[1:]),
+                0.5 * (zbins[:-1] + zbins[1:]),
+                indexing='ij'
+            )
+            grid_points = np.array([grid_x.flatten(), grid_y.flatten(), grid_z.flatten()]).T
+
+            interpolated = griddata(points, data_comp[dummy_mask], grid_points, method='linear', fill_value=0)
+            hist = interpolated.reshape(pixel_dimensions)
+            binning_result[key] = hist
+
+    for component, binned in binning_result.items():
+        np.save(OUTPUT_PATH + f'{component}_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{step}.npy', binned)
+
+    Jx = components["q"][real_mask] * velocities["Bx"][real_mask] * c / bin_volume
+    Jy = components["q"][real_mask] * velocities["By"][real_mask] * c / bin_volume
+    Jz = components["q"][real_mask] * velocities["Bz"][real_mask] * c / bin_volume
+
+    j_components = {
+        "Jx": Jx,
+        "Jy": Jy,
+        "Jz": Jz,
+    }
+
+    for j_key, j_data in j_components.items():
+        hist, _ = np.histogramdd((x[real_mask], y[real_mask], z[real_mask]), bins=[xbins, ybins, zbins], weights=j_data, density=True)
+        np.save(OUTPUT_PATH + f'{j_key}_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{step}.npy', hist)
+
+    B_max_local = max(components["Bx"][real_mask].max(), components["By"][real_mask].max(), components["Bz"][real_mask].max())
+    J_max_local = max(Jx.max(), Jy.max(), Jz.max())
+
+    return B_max_local, J_max_local
+
+
+def process_data(data, pixel_dimensions, OUTPUT_PATH):
+
+    x_min, x_max, y_min, y_max, z_min, z_max, z_max_range = global_xyz_real(data)
+
+    xbins = np.linspace(x_min, x_max, pixel_dimensions[0] + 1)
+    ybins = np.linspace(y_min, y_max, pixel_dimensions[1] + 1)
+    zbins = np.linspace(z_min, z_max, pixel_dimensions[2] + 1)
 
     bin_volume = z_max_range * (xbins[1] - xbins[0]) * (ybins[1] - ybins[0])
 
@@ -248,6 +256,8 @@ def process_data(data):
     print("B_max_global:", B_max_global)
     print("J_max_global:", J_max_global)
 
+
+
 def compute_max_abs_value(variable_name, data_length, pixel_dimensions, OUTPUT_PATH):
     max_abs_value = 0
     for i in range(data_length):
@@ -255,6 +265,8 @@ def compute_max_abs_value(variable_name, data_length, pixel_dimensions, OUTPUT_P
         binned_data = np.load(file_path)
         max_abs_value = max(max_abs_value, np.abs(binned_data).max())
     return max_abs_value
+
+
 
 def plot_frame(args):
     i, data, xbins, ybins, zbins, pixel_dimensions, variable_name, OUTPUT_PATH, max_abs_value = args
@@ -323,18 +335,20 @@ def plot_frame(args):
     print(f"Saved frame {i} as {filename}")
     return filename
 
-def plot_variable(variable_name, data_length, xbins, ybins, zbins, data):
-    OUTPUT_PATH = '/sdf/scratch/rfar/jcurcio/Volume_Data/'
-    pixel_dimensions = (128, 128, 128)  # (n_pixels_x, n_pixels_y, n_pixels_z)
+
+
+def plot_variable(variable_name, data_length, xbins, ybins, zbins, data, pixel_dimensions, OUTPUT_PATH):
 
     max_abs_value = compute_max_abs_value(variable_name, data_length, pixel_dimensions, OUTPUT_PATH)
     print(f'Max absolute value for {variable_name}: {max_abs_value}')
 
     pool_args = [(i, data, xbins, ybins, zbins, pixel_dimensions, variable_name, OUTPUT_PATH, max_abs_value) for i in range(data_length)]
 
+    # Plot in parallel
     with Pool(cpu_count()) as pool:
         filenames = pool.map(plot_frame, pool_args)
 
+    # Compile the gif
     filenames = [fname for fname in filenames if fname is not None]
     gif_filename = f'{variable_name}_output.gif'
     with imageio.get_writer(gif_filename, mode='I', duration=0.1, loop=0) as writer:
@@ -345,35 +359,50 @@ def plot_variable(variable_name, data_length, xbins, ybins, zbins, data):
 
     print(f'GIF saved as {gif_filename}')
 
+    # Delete temporary png files
     for filename in filenames:
         os.remove(filename)
 
     print(f'Removed {len(filenames)} temporary PNG files.')
 
+
+
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
+    parser.add_argument('--dims', help='Specify output dimensions: <x>,<y>,<z>', type=str)
+    parser.add_argument('--dir_out', help='Specify the output directory for parsing and plotting: /path/to/output/', type=str)
     parser.add_argument('--plot', action='store_true', help='Plot the data after processing')
     parser.add_argument('--parse', action='store_true', help='Parse the data')
     args = parser.parse_args()
 
-    data = gdftomemory("PINN_trainingData_05.gdf")
+    # Default configuration
+    OUTPUT_PATH = '/pscratch/sd/j/jcurcio/pcnn/Volume_Data/'
+    data = gdftomemory("test.gdf")
+    pixel_dimensions = (128, 128, 128)
+
+    if args.dims:
+        pixel_dimensions = tuple([int(dim) for dim in args.dims.split(',')])
+        print('Output dimensions: ', pixel_dimensions)
+
+    if args.dir_out:
+        OUTPUT_PATH = args.dir_out
+        print('Output path: ', OUTPUT_PATH)
 
     if args.parse:
-        process_data(data)
-        print("npy files saved.")
+        process_data(data, pixel_dimensions, OUTPUT_PATH)
+        print('npy files saved.')
 
     if args.plot:
-        pixel_dimensions = (128, 128, 128)
-        global_x_min = -0.022236700088973476
-        global_x_max = 0.02330245305010191
-        global_y_min = -0.022648254095570586
-        global_y_max = 0.022816775174947665
+
+        global_x_min, global_x_max, global_y_min, global_y_max, _, _, _ = global_xyz_real(data)
 
         data_length = len(data) - 1
         xbins = np.linspace(global_x_min, global_x_max, pixel_dimensions[0] + 1)
         ybins = np.linspace(global_y_min, global_y_max, pixel_dimensions[1] + 1)
         zbins = np.linspace(-0.5, 0.5, pixel_dimensions[2] + 1)
 
-        plot_variable('Bx', data_length, xbins, ybins, zbins, data)
+        plot_variable('q', data_length, xbins, ybins, zbins, data, pixel_dimensions, OUTPUT_PATH)
+
+        print('Plotting complete.')
 
