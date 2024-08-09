@@ -495,6 +495,11 @@ print(f'Total time: {t22 - t11:.2f} seconds')
 
 model_A.save('../Trained_Models/PCNN.h5')
 
+
+
+
+
+
 # ------------------------------
 # Plotting the results at the end
 # Convert lists to numpy arrays for easier manipulation

@@ -4,7 +4,8 @@ import pandas as pd
 import struct
 import os
 from datetime import datetime
-from scipy.interpolate import griddata
+from scipy.interpolate import griddata, RegularGridInterpolator
+from scipy.spatial import QhullError
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.ticker import MaxNLocator, ScalarFormatter
@@ -118,9 +119,6 @@ def global_xyz_real(data):
     z_min = float("inf")
     z_max = float("-inf")
 
-    B_max_global = float("-inf")
-    J_max_global = float("-inf")
-
     for step in range(len(data) - 1):
         x = np.array(data[step].get("d").get("x"))
         y = np.array(data[step].get("d").get("y"))
@@ -154,7 +152,7 @@ def global_xyz_real(data):
 
 
 def process_step(args):
-    step, data, xbins, ybins, zbins, pixel_dimensions, bin_volume, OUTPUT_PATH = args
+    step, data, xbins, ybins, z_max_range, pixel_dimensions, bin_volume, OUTPUT_PATH = args
     c = 2.99792458e8
 
     # Extract coordinates and charge information
@@ -186,6 +184,8 @@ def process_step(args):
 
     binning_result = {}
 
+    zbins = np.linspace(z.min(), z.min() + z_max_range, pixel_dimensions[2] + 1)
+
     for key, data_comp in components.items():
         # If binning rho, add values and divide by bin volume
         if key == 'q':
@@ -203,8 +203,19 @@ def process_step(args):
             )
             grid_points = np.array([grid_x.flatten(), grid_y.flatten(), grid_z.flatten()]).T
 
-            interpolated = griddata(points, data_comp[dummy_mask], grid_points, method='linear', fill_value=0)
-            hist = interpolated.reshape(pixel_dimensions)
+            try:
+                # Use LinearNDInterpolator for interpolation
+                interpolator = LinearNDInterpolator(points, data_comp[dummy_mask])
+                interpolated = interpolator(grid_points)
+
+                # Handle potential NaN values from interpolation (due to out-of-bounds points)
+                interpolated[np.isnan(interpolated)] = 0
+
+                hist = interpolated.reshape(pixel_dimensions)
+            except QhullError as e:
+                print(f"Qhull error encountered: {e}")
+                hist = np.zeros(pixel_dimensions)  # As a fallback, return zeros
+
             binning_result[key] = hist
 
     for component, binned in binning_result.items():
@@ -232,15 +243,17 @@ def process_step(args):
 
 def process_data(data, pixel_dimensions, OUTPUT_PATH):
 
+    B_max_global = float("-inf")
+    J_max_global = float("-inf")
+
     x_min, x_max, y_min, y_max, z_min, z_max, z_max_range = global_xyz_real(data)
 
     xbins = np.linspace(x_min, x_max, pixel_dimensions[0] + 1)
     ybins = np.linspace(y_min, y_max, pixel_dimensions[1] + 1)
-    zbins = np.linspace(z_min, z_max, pixel_dimensions[2] + 1)
 
     bin_volume = z_max_range * (xbins[1] - xbins[0]) * (ybins[1] - ybins[0])
 
-    pool_args = [(step, data, xbins, ybins, zbins, pixel_dimensions, bin_volume, OUTPUT_PATH) for step in range(len(data) - 1)]
+    pool_args = [(step, data, xbins, ybins, z_max_range, pixel_dimensions, bin_volume, OUTPUT_PATH) for step in range(len(data) - 1)]
 
     with Pool(cpu_count()) as pool:
         results = pool.map(process_step, pool_args)
@@ -261,7 +274,7 @@ def process_data(data, pixel_dimensions, OUTPUT_PATH):
 def compute_max_abs_value(variable_name, data_length, pixel_dimensions, OUTPUT_PATH):
     max_abs_value = 0
     for i in range(data_length):
-        file_path = OUTPUT_PATH + f'{variable_name}_3D_vol_{pixel_dimensions}_{i}.npy'
+        file_path = OUTPUT_PATH + f'{variable_name}_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{i}.npy'
         binned_data = np.load(file_path)
         max_abs_value = max(max_abs_value, np.abs(binned_data).max())
     return max_abs_value
@@ -269,20 +282,28 @@ def compute_max_abs_value(variable_name, data_length, pixel_dimensions, OUTPUT_P
 
 
 def plot_frame(args):
-    i, data, xbins, ybins, zbins, pixel_dimensions, variable_name, OUTPUT_PATH, max_abs_value = args
+    i, data, xbins, ybins, pixel_dimensions, variable_name, OUTPUT_PATH, max_abs_value = args
     x_centers = 0.5 * (xbins[:-1] + xbins[1:])
     y_centers = 0.5 * (ybins[:-1] + ybins[1:])
-    z_centers = 0.5 * (zbins[:-1] + zbins[1:])
 
     fig = plt.figure(figsize=(20, 16))
     ax = fig.add_subplot(121, projection='3d')
 
-    file_path = OUTPUT_PATH + f'{variable_name}_3D_vol_{pixel_dimensions}_{i}.npy'
+    file_path = OUTPUT_PATH + f'{variable_name}_3D_vol_{pixel_dimensions[0]}_{pixel_dimensions[1]}_{pixel_dimensions[2]}_{i}.npy'
     binned_data = np.load(file_path)
 
     if np.all(binned_data == 0):
         print(f"File contains only zeros: {file_path}")
         return None
+
+    # MIGHT NEED A REAL PARTICLE MASK HERE
+    z_data = data[i].get("d").get("z")
+    z = np.array(z_data)
+    z_min_current = z.min()
+    z_max_current = z.max()
+
+    zbins = np.linspace(z_min_current, z_max_current, pixel_dimensions[2] + 1)
+    z_centers = 0.5 * (zbins[:-1] + zbins[1:])
 
     X, Y, Z = np.meshgrid(x_centers, y_centers, z_centers, indexing='ij')
 
@@ -300,7 +321,7 @@ def plot_frame(args):
     else:
         ax.text2D(0.5, 0.5, "No Data", horizontalalignment='center', verticalalignment='center', transform=ax.transAxes)
 
-    ax.set_xlim(z_centers[0], z_centers[-1])
+    ax.set_xlim(z_min_current, z_max_current)
     ax.set_ylim(xbins[0], xbins[-1])
     ax.set_zlim(ybins[0], ybins[-1])
 
@@ -320,7 +341,7 @@ def plot_frame(args):
     ax.zaxis.set_major_formatter(ScalarFormatter(useOffset=False, useMathText=True))
 
     ax2 = fig.add_subplot(122)
-    z_slice_index = n_pixels_z // 2
+    z_slice_index = pixel_dimensions[2] // 2
     slice_data = binned_data[:, :, z_slice_index]
     extent = [xbins[0], xbins[-1], ybins[0], ybins[-1]]
     im = ax2.imshow(slice_data.T, extent=extent, origin='lower', aspect='equal', cmap='viridis', vmin=-max_abs_value, vmax=max_abs_value)
@@ -337,12 +358,12 @@ def plot_frame(args):
 
 
 
-def plot_variable(variable_name, data_length, xbins, ybins, zbins, data, pixel_dimensions, OUTPUT_PATH):
+def plot_variable(variable_name, data_length, xbins, ybins, data, pixel_dimensions, OUTPUT_PATH):
 
     max_abs_value = compute_max_abs_value(variable_name, data_length, pixel_dimensions, OUTPUT_PATH)
     print(f'Max absolute value for {variable_name}: {max_abs_value}')
 
-    pool_args = [(i, data, xbins, ybins, zbins, pixel_dimensions, variable_name, OUTPUT_PATH, max_abs_value) for i in range(data_length)]
+    pool_args = [(i, data, xbins, ybins, pixel_dimensions, variable_name, OUTPUT_PATH, max_abs_value) for i in range(data_length)]
 
     # Plot in parallel
     with Pool(cpu_count()) as pool:
@@ -377,8 +398,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Default configuration
-    OUTPUT_PATH = '/pscratch/sd/j/jcurcio/pcnn/Volume_Data/'
-    data = gdftomemory("test.gdf")
+    OUTPUT_PATH = '/sdf/scratch/rfar/jcurcio/Volume_Data/'
+    data = gdftomemory("PINN_trainingData_08.gdf")
     pixel_dimensions = (128, 128, 128)
 
     if args.dims:
@@ -400,9 +421,8 @@ if __name__ == "__main__":
         data_length = len(data) - 1
         xbins = np.linspace(global_x_min, global_x_max, pixel_dimensions[0] + 1)
         ybins = np.linspace(global_y_min, global_y_max, pixel_dimensions[1] + 1)
-        zbins = np.linspace(-0.5, 0.5, pixel_dimensions[2] + 1)
 
-        plot_variable('q', data_length, xbins, ybins, zbins, data, pixel_dimensions, OUTPUT_PATH)
+        plot_variable('Ex', data_length, xbins, ybins, data, pixel_dimensions, OUTPUT_PATH)
 
         print('Plotting complete.')
 
