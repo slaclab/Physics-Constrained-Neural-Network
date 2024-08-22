@@ -1,0 +1,64 @@
+## set real  beam
+nps =5000; # # number of real particles
+Qtot = -20e-12 ; # Total charge 100 pC
+setparticles( "beam", nps, me, qe, Qtot ) ;
+
+sigmar=35e-6;
+ztime= 1.5*2.5*155e-15/2.355; # bunch length 160 fs rms at slit for 3 MeV beam
+GunPowerFac = -65.35e6*0.99; 
+SolFac = SolFacss;
+zlen = 0.01 ; # Buch length: 4 [mm]
+radius = 0.004 ; # Bunch radius: 2 [mm]
+nanosfac = nanofacss;
+
+
+setzdist( "beam", "g", 0,zlen, 3,3 ) ;
+setrxydist( "beam", "g", 0, radius, 0,3 ) ;
+setphidist( "beam", "u", 0, 2*pi ) ;
+setGBxdist( "beam", "g", 0, 1e-3, 3,3 ) ;
+setGBydist( "beam", "g", 0, 1e-3, 3,3 ) ;
+Eo = .03*1e6 ; # Average beam energy: 1 [MeV]
+G = 1-q*Eo/(m*c*c) ; # Corresponding gamma
+dG = (G-1)/100 ; # 1% Energy spread
+setGdist( "beam", "u", G, dG ) ;
+
+##############################
+
+## Add space charge
+spacecharge3Dmesh("MeshNtotal",33,33,33);
+spacecharge3Dmesh("MeshBoxSize",100);
+
+##############################
+## Add Solenoid
+solenoid("wcs","z",0, 0.08, 6000) ;
+
+####################
+#Specifiy maximum delta t
+dtfac=1;
+dtfac=1;
+dtmaxt(-ztime*3, ztime*3, 1e-13*dtfac);
+dtmaxt(ztime*3, 5.1e-10, 1e-13*dtfac);
+dtmaxt(5.08e-9, 5.12e-9, 1e-15);
+dtmaxt(5.12e-9,15.8e-12,1e-12);
+
+####################
+#Output Data each 0.2 ns
+#tout(0, 2e-9, 0.2e-9); # 2nd entry is end time, 3rd entry is time between each step
+
+####################
+## Define observation grid for field evaluation
+Lx = 0.04; # Grid length in x-direction
+dx = 0.001; # Grid spacing in x-direction
+Ly = 0.04; # Grid length in y-direction
+dy = 0.001; # Grid spacing in y-direction
+Lz = 0.08; # Grid length in z-direction
+dz = 0.001; # Grid spacing in z-direction
+
+# Create grid of observation points
+q=0.0;
+
+setstartxyzgrid("observationGrid", Lx, dx, Ly, dy, Lz, dz);
+
+setGdist("observationGrid", "u", G, dG);
+
+tout(0.8e-9, 1.2e-9, 0.2e-9); # Output at initial time for field evaluation
