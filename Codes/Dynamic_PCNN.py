@@ -9,7 +9,7 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, mixed_precision
-from tensorflow.keras.layers import Input, Conv3D, MaxPooling3D, UpSampling3D, Add, BatchNormalization, LeakyReLU, Dense, GlobalAveragePooling3D
+from tensorflow.keras.layers import Input, Conv3D, Conv3DTranspose, MaxPooling3D, UpSampling3D, Add, BatchNormalization, LeakyReLU, Dense, GlobalAveragePooling3D
 from tensorflow.keras.models import Model
 from tensorflow.keras.regularizers import l2 as l2_reg
 import matplotlib.pyplot as plt
@@ -223,7 +223,9 @@ def Field_model():
         return x, p
 
     def upsample_block(input_tensor, skip_tensor, num_filters):
-        x = UpSampling3D(size=(2,2,2))(input_tensor)
+        x = Conv3DTranspose(num_filters, kernel_size=3, strides=(2,2,2), padding='same', kernel_regularizer=l2_reg(l2w))(input_tensor)
+        x = BatchNormalization()(x)
+        x = LeakyReLU(alpha=0.1)(x)
         x = conv_block(x, num_filters)
         x = Add()([x, skip_tensor])
         return x
@@ -430,7 +432,7 @@ with strategy.scope():
     model_A = Field_model()
     lr = 1e-4
     optim_A = tf.keras.optimizers.Adam(learning_rate=lr, clipvalue=1.0)
-    model_A.compile(optimizer=optim_A, loss='mse')  # Compile with the desired loss
+    #model_A.compile(optimizer=optim_A, loss='mse')  # Compile with the desired loss
 
 model_A.summary()
 
@@ -438,11 +440,11 @@ model_A.summary()
 N_epochs = 10
 
 # Number of training data points to look at
-Nt = int(0.75 * n_timesteps)
-#Nt = 20
+#Nt = int(0.75 * n_timesteps)
+Nt = 2
 
 # Curriculum represents the subset of timesteps per epoch
-current_curriculum = math.ceil(Nt * 0.1) # First epoch will have 10% of the training data
+#current_curriculum = math.ceil(Nt * 0.1) # First epoch will have 10% of the training data
 
 print('Number of training timesteps: ', Nt)
 
@@ -455,7 +457,7 @@ t11 = time.time()
 
 # Training loop
 for n_ep in range(N_epochs):
-    for n_t in range(current_curriculum):
+    for n_t in range(Nt):
         print(f'Starting single step {n_t + 1}/{Nt} of epoch {n_ep + 1}/{N_epochs}.')
         t1 = time.time()
 
@@ -486,10 +488,17 @@ for n_ep in range(N_epochs):
         t2 = time.time()
         print(f'Step time: {t2 - t1:.2f} seconds')
 
-    current_curriculum += math.ceil(Nt * 0.1)
+    #current_curriculum += math.ceil(Nt * 0.1)
 
 t22 = time.time()
 print(f'Total time: {t22 - t11:.2f} seconds')
+
+model_A.save('../Trained_Models/PCNN.h5')
+
+
+
+
+
 
 # ------------------------------
 # Plotting the results at the end
